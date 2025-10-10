@@ -36,8 +36,8 @@ namespace FXOptionsSimulator
         /// </summary>
         public void ReceiveQuoteRequest(FIXMessage quoteRequest)
         {
-            var quoteReqID = quoteRequest.Get(Tags.QuoteReqID);
-            var underlying = quoteRequest.Get(Tags.Symbol);
+            var quoteReqID = quoteRequest.Get(TagStrings.QuoteReqID);
+            var underlying = quoteRequest.Get(TagStrings.Symbol);
 
             _activeStreams[quoteReqID] = new StreamState
             {
@@ -76,15 +76,15 @@ namespace FXOptionsSimulator
 
             // Build Quote message (35=S)
             var quote = new FIXMessage(MsgTypes.Quote)
-                .Set(Tags.SenderCompID, "GFI")
-                .Set(Tags.TargetCompID, "<CLIENT>")
-                .Set(Tags.OnBehalfOfCompID, Name)
-                .Set(Tags.QuoteReqID, quoteReqID)
-                .Set(Tags.QuoteID, $"{Name}.Q{stream.QuoteCounter}")
-                .Set(Tags.Side, side)
-                .Set(Tags.Symbol, stream.Underlying)
-                .Set(Tags.Structure, Values.Structure.CallSpread)
-                .Set(Tags.SendingTime, DateTime.UtcNow.ToString("yyyyMMdd-HH:mm:ss.ffffff"))
+                .Set(TagStrings.SenderCompID, "GFI")
+                .Set(TagStrings.TargetCompID, "<CLIENT>")
+                .Set(TagStrings.OnBehalfOfCompID, Name)
+                .Set(TagStrings.QuoteReqID, quoteReqID)
+                .Set(TagStrings.QuoteID, $"{Name}.Q{stream.QuoteCounter}")
+                .Set(TagStrings.Side, side)
+                .Set(TagStrings.Symbol, stream.Underlying)
+                .Set(TagStrings.Structure, Values.Structure.CallSpread)
+                .Set(TagStrings.SendingTime, DateTime.UtcNow.ToString("yyyyMMdd-HH:mm:ss.ffffff"))
                 .Set("62", DateTime.UtcNow.AddSeconds(30).ToString("yyyyMMdd-HH:mm:ss")) // ValidUntilTime
                 .Set("6120", "2") // NoMQEntries (2 legs for call spread)
 

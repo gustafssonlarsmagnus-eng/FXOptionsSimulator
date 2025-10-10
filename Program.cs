@@ -82,13 +82,13 @@ namespace FXOptionsSimulator
 
             if (bestBid != null && bestOffer != null)
             {
-                var bidVol = double.Parse(bestBid.Get(Tags.Volatility));
-                var offerVol = double.Parse(bestOffer.Get(Tags.Volatility));
+                var bidVol = double.Parse(bestBid.Get(TagStrings.Volatility));
+                var offerVol = double.Parse(bestOffer.Get(TagStrings.Volatility));
                 var spread = offerVol - bidVol;
                 var midVol = (bidVol + offerVol) / 2;
 
-                Console.WriteLine($"\nBest BID:   {bestBid.Get(Tags.OnBehalfOfCompID),-10} @ {bidVol:F3} vol");
-                Console.WriteLine($"Best OFFER: {bestOffer.Get(Tags.OnBehalfOfCompID),-10} @ {offerVol:F3} vol");
+                Console.WriteLine($"\nBest BID:   {bestBid.Get(TagStrings.OnBehalfOfCompID),-10} @ {bidVol:F3} vol");
+                Console.WriteLine($"Best OFFER: {bestOffer.Get(TagStrings.OnBehalfOfCompID),-10} @ {offerVol:F3} vol");
                 Console.WriteLine($"\nBid-Offer Spread: {spread:F3} vol ({spread / midVol * 10000:F0} bps)");
                 Console.WriteLine($"Mid Market:       {midVol:F3} vol");
 
@@ -109,7 +109,7 @@ namespace FXOptionsSimulator
                 if (filled)
                 {
                     Console.WriteLine("\n✓ TRADE FILLED");
-                    Console.WriteLine($"  Counterparty: {bestBid.Get(Tags.OnBehalfOfCompID)}");
+                    Console.WriteLine($"  Counterparty: {bestBid.Get(TagStrings.OnBehalfOfCompID)}");
                     Console.WriteLine($"  Structure:    {trade.StructureType}");
                     Console.WriteLine($"  Notional:     {trade.Legs[0].NotionalMM}M {trade.Legs[0].NotionalCurrency}");
                     Console.WriteLine("\n>>> Next: You'll receive Trade Capture Report (35=AE) with full STP details");

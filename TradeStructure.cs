@@ -10,6 +10,7 @@ namespace FXOptionsSimulator
     public class TradeStructure
     {
         public string Underlying { get; set; }
+        public string CurrencyPair { get; set; }
         public string StructureType { get; set; } // "CallSpread", "PutSpread", "RiskReversal", "Seagull"
         public List<OptionLeg> Legs { get; set; } = new List<OptionLeg>();
         public string PremiumCurrency { get; set; }

@@ -66,21 +66,21 @@ namespace FXOptionsSimulator
 
                 // Build Quote Request (35=R)
                 var quoteReq = new FIXMessage(MsgTypes.QuoteRequest)
-                    .Set(Tags.SenderCompID, "<CLIENT>")
-                    .Set(Tags.TargetCompID, "GFI")
-                    .Set(Tags.OnBehalfOfCompID, "<CLIENT>")
-                    .Set(Tags.DeliverToCompID, lp)
-                    .Set(Tags.NoBanksReqFenics, groupId)
-                    .Set(Tags.QuoteReqID, $"FENICS.5015500.Q{_seqNum}")
+                    .Set(TagStrings.SenderCompID, "<CLIENT>")
+                    .Set(TagStrings.TargetCompID, "GFI")
+                    .Set(TagStrings.OnBehalfOfCompID, "<CLIENT>")
+                    .Set(TagStrings.DeliverToCompID, lp)
+                    .Set(TagStrings.NoBanksReqFenics, groupId)
+                    .Set(TagStrings.QuoteReqID, $"FENICS.5015500.Q{_seqNum}")
                     .Set("75", DateTime.UtcNow.ToString("yyyyMMdd")) // TradeDate
-                    .Set(Tags.Symbol, underlying)
-                    .Set(Tags.Structure, Values.Structure.CallSpread)
+                    .Set(TagStrings.Symbol, underlying)
+                    .Set(TagStrings.Structure, Values.Structure.CallSpread)
                     .Set("5475", "S") // PremDel = Spot
-                    .Set(Tags.PremiumCcy, "USD")
-                    .Set(Tags.HedgeTradeType, "1") // Spot hedge
+                    .Set(TagStrings.PremiumCcy, "USD")
+                    .Set(TagStrings.HedgeTradeType, "1") // Spot hedge
                     .Set("9943", "2") // ProductQuoteType = Premium
                     .Set("146", "1") // NoRelatedSym
-                    .Set(Tags.NoLegs, "2")
+                    .Set(TagStrings.NoLegs, "2")
 
                     // Leg 1: Buy 1M EUR Call, strike 1.21, 6M
                     .Set("leg1_600", underlying) // LegSymbol
@@ -122,13 +122,13 @@ namespace FXOptionsSimulator
                 LogMessage("SENT", quoteReq);
 
                 // LP receives request
-                var quoteReqID = quoteReq.Get(Tags.QuoteReqID);
+                var quoteReqID = quoteReq.Get(TagStrings.QuoteReqID);
                 _liquidityProviders[lp].ReceiveQuoteRequest(quoteReq);
 
                 // Send Quote Status Report (35=AI)
                 var status = new FIXMessage(MsgTypes.QuoteStatusReport)
-                    .Set(Tags.QuoteReqID, quoteReqID)
-                    .Set(Tags.QuoteStatus, "0"); // Accepted
+                    .Set(TagStrings.QuoteReqID, quoteReqID)
+                    .Set(TagStrings.QuoteStatus, "0"); // Accepted
 
                 LogMessage("RECV", status);
 
@@ -270,19 +270,19 @@ namespace FXOptionsSimulator
         {
             Console.WriteLine($"\n=== EXECUTING TRADE ===");
             Console.WriteLine($"Side: {executionSide}");
-            Console.WriteLine($"Quote: {quote.Get(Tags.OnBehalfOfCompID)} @ {quote.Get(Tags.Volatility)} vol\n");
+            Console.WriteLine($"Quote: {quote.Get(TagStrings.OnBehalfOfCompID)} @ {quote.Get(TagStrings.Volatility)} vol\n");
 
             // Build New Order Multileg (35=AB)
             var order = new FIXMessage(MsgTypes.NewOrderMultileg)
-                .Set(Tags.SenderCompID, "<CLIENT>")
-                .Set(Tags.TargetCompID, "GFI")
-                .Set(Tags.ClOrdID, $"ORD{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}")
+                .Set(TagStrings.SenderCompID, "<CLIENT>")
+                .Set(TagStrings.TargetCompID, "GFI")
+                .Set(TagStrings.ClOrdID, $"ORD{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}")
                 .Set("40", "1") // OrdType = MARKET
                 .Set("59", "3") // TimeInForce = IOC
-                .Set(Tags.Side, executionSide == "SELL" ? Values.Side.Sell : Values.Side.Buy)
-                .Set(Tags.QuoteID, quote.Get(Tags.QuoteID))
-                .Set(Tags.QuoteReqID, quote.Get(Tags.QuoteReqID))
-                .Set(Tags.SendingTime, DateTime.UtcNow.ToString("yyyyMMdd-HH:mm:ss.ffffff"));
+                .Set(TagStrings.Side, executionSide == "SELL" ? Values.Side.Sell : Values.Side.Buy)
+                .Set(TagStrings.QuoteID, quote.Get(TagStrings.QuoteID))
+                .Set(TagStrings.QuoteReqID, quote.Get(TagStrings.QuoteReqID))
+                .Set(TagStrings.SendingTime, DateTime.UtcNow.ToString("yyyyMMdd-HH:mm:ss.ffffff"));
 
             LogMessage("SENT", order);
 
@@ -292,14 +292,14 @@ namespace FXOptionsSimulator
 
             // Send Execution Report (35=8)
             var execReport = new FIXMessage(MsgTypes.ExecutionReport)
-                .Set(Tags.ClOrdID, order.Get(Tags.ClOrdID))
-                .Set(Tags.OrderID, $"EXEC{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}")
+                .Set(TagStrings.ClOrdID, order.Get(TagStrings.ClOrdID))
+                .Set(TagStrings.OrderID, $"EXEC{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}")
                 .Set("17", $"{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.1") // ExecID
-                .Set(Tags.OrdStatus, filled ? Values.OrdStatus.Filled : Values.OrdStatus.Rejected)
-                .Set(Tags.ExecType, filled ? "2" : "8")
-                .Set(Tags.Side, order.Get(Tags.Side))
-                .Set("38", quote.Get(Tags.MQSize)) // OrderQty
-                .Set("14", filled ? quote.Get(Tags.MQSize) : "0") // CumQty
+                .Set(TagStrings.OrdStatus, filled ? Values.OrdStatus.Filled : Values.OrdStatus.Rejected)
+                .Set(TagStrings.ExecType, filled ? "2" : "8")
+                .Set(TagStrings.Side, order.Get(TagStrings.Side))
+                .Set("38", quote.Get(TagStrings.MQSize)) // OrderQty
+                .Set("14", filled ? quote.Get(TagStrings.MQSize) : "0") // CumQty
                 .Set("151", "0"); // LeavesQty
 
             if (!filled)
@@ -318,7 +318,7 @@ namespace FXOptionsSimulator
         public void CancelStream(string quoteReqID)
         {
             var cancel = new FIXMessage(MsgTypes.QuoteCancel)
-                .Set(Tags.QuoteReqID, quoteReqID)
+                .Set(TagStrings.QuoteReqID, quoteReqID)
                 .Set("298", "2"); // QuoteCancelType = Cancel Quote Request
 
             LogMessage("SENT", cancel);
