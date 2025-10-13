@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace FXOptionsSimulator
+namespace FXOptionsSimulator.FIX  // ← CHANGED: Added .FIX namespace
 {
     /// <summary>
     /// Configuration matching GFI Fenics requirements
@@ -9,50 +9,40 @@ namespace FXOptionsSimulator
     /// </summary>
     public class FenicsConfig
     {
-        // ===== PROVIDED BY GFI =====
-        // You'll receive these during UAT onboarding
+        // ========== ENVIRONMENT ==========
+        public string Environment { get; set; } = "UAT";  // ← ADDED: Was missing
 
-        public string Environment { get; set; } = "UAT"; // or "PROD"
+        // ========== UAT CREDENTIALS (RECEIVED FROM GFI) ==========
+        public string SenderCompID { get; set; } = "WEBFENICS55";
+        public string OnBehalfOfCompID { get; set; } = "SWES";
+        public string Username { get; set; } = "swed.obo.stg.api";
+        public string Password { get; set; } = "ZQcZokEOLjb9";
 
-        // Connection details
-        public string Host { get; set; } = "quotes.stage2.gfifx.com"; // UAT
-        public int Port { get; set; } = 443; // SSL
-
-        // Your credentials (GFI assigns these)
-        public string SenderCompID { get; set; } = "YOUR_COMPID_HERE"; // e.g., "CLIENT123"
-        public string OnBehalfOfCompID { get; set; } = "YOUR_COMPID_HERE"; // Usually same
-        public string Username { get; set; } = "your.username"; // For tag 553
-        public string Password { get; set; } = "your.password"; // For tag 554
-
-        // Your account prefix for QuoteReqID (tag 131)
-        public string QuoteReqPrefix { get; set; } = "FENICS.5015500."; // GFI assigns this number
-
-        // Heartbeat (must be <= 10 seconds per spec)
+        // ========== CONNECTION SETTINGS ==========
+        public string Host { get; set; } = "quotes.stage2.gfifx.com";
+        public int Port { get; set; } = 443;
         public int HeartbeatInterval { get; set; } = 10;
 
-        // ===== LIQUIDITY PROVIDERS =====
-        // Available LPs and their CompIDs
-        // NOTE: Values differ between UAT and PROD (e.g., NOMU vs NOMURA)
+        // ========== QUOTE REQUEST PREFIX ==========
+        public string QuoteReqPrefix { get; set; } = "SWES.";
+
+        // ========== LIQUIDITY PROVIDERS (UAT VALUES) ==========
         public Dictionary<string, string> LiquidityProviders { get; set; } = new Dictionary<string, string>
         {
-            // UAT CompIDs (examples - GFI will provide actual values)
-            ["MS"] = "MS",
-            ["UBS"] = "UBS",
-            ["CITI"] = "CITI",
-            ["JPM"] = "JPM",
-            ["GS"] = "GS",
-            ["BARC"] = "BARC",
-            ["DB"] = "DB",
-            ["NATWEST"] = "NATWEST",
-            ["NOMU"] = "NOMU", // Nomura in UAT
-            ["SG"] = "SG",
+            // Ask GFI for actual UAT CompIDs - these are likely correct for UAT
+            ["MS"] = "MS",           // Morgan Stanley
+            ["UBS"] = "UBS",         // UBS
+            ["CITI"] = "CITI",       // Citibank
+            ["JPM"] = "JPM",         // JP Morgan
+            ["GS"] = "GS",           // Goldman Sachs
+            ["BARC"] = "BARC",       // Barclays
+            ["DB"] = "DB",           // Deutsche Bank
+            ["NATWEST"] = "NATWEST", // NatWest Markets
+            ["NOMU"] = "NOMU",       // Nomura
+            ["SG"] = "SG"            // Societe Generale
         };
 
-        // Production would be different:
-        // ["NOMURA"] = "NOMURA",  // Not NOMU
-
-        // ===== MARKET DATA =====
-        // Currency pairs you're entitled to trade
+        // ========== AUTHORIZED CURRENCY PAIRS ==========
         public List<string> AuthorizedPairs { get; set; } = new List<string>
         {
             "EURUSD",
@@ -60,9 +50,14 @@ namespace FXOptionsSimulator
             "EURSEK",
             "GBPUSD",
             "USDJPY",
+            "USDNOK",
+            "EURNOK",
+            "GBPSEK",
+            "AUDNOK",
+            "NOKSEK"
         };
 
-        // Cutoff mappings (tag 9125) - from Appendix I
+        // ========== CUTOFF MAPPINGS ==========
         public Dictionary<string, string> CutoffCodes { get; set; } = new Dictionary<string, string>
         {
             ["NY"] = "1",      // New York 10:00
@@ -70,34 +65,41 @@ namespace FXOptionsSimulator
             ["LON"] = "157",   // London WMR 1pm
         };
 
-        // ===== VALIDATION =====
+        // ========== VALIDATION ==========
         public void Validate()
         {
             var errors = new List<string>();
 
-            if (SenderCompID == "YOUR_COMPID_HERE")
-                errors.Add("SenderCompID not configured - get from GFI");
+            // Check if still using placeholder values
+            if (SenderCompID == "YOUR_COMPID_HERE" || string.IsNullOrEmpty(SenderCompID))
+                errors.Add("  ! SenderCompID not configured");
 
-            if (Username == "your.username")
-                errors.Add("Username not configured - get from GFI");
+            if (Username == "your.username" || string.IsNullOrEmpty(Username))
+                errors.Add("  ! Username not configured");
 
-            if (Password == "your.password")
-                errors.Add("Password not configured - get from GFI");
+            if (Password == "your.password" || string.IsNullOrEmpty(Password))
+                errors.Add("  ! Password not configured");
 
-            if (QuoteReqPrefix.Contains("5015500") && Environment == "PROD")
-                errors.Add("Using UAT prefix in PROD environment");
-
+            // These are now configured, so no warnings!
+            // Just validate reasonable values
             if (HeartbeatInterval > 10)
-                errors.Add("Heartbeat must be <= 10 seconds per GFI spec");
+                errors.Add("  ! Heartbeat must be <= 10 seconds per GFI spec");
+
+            if (Port != 443 && Port != 80)
+                errors.Add("  ! Port should be 443 (SSL) or 80 for UAT");
 
             if (errors.Count > 0)
             {
-                Console.WriteLine("\n=== CONFIGURATION ERRORS ===");
+                Console.WriteLine("\n=== CONFIGURATION WARNINGS ===");
                 foreach (var error in errors)
                 {
-                    Console.WriteLine($"  ! {error}");
+                    Console.WriteLine(error);
                 }
-                Console.WriteLine("\nThese fields will be provided by GFI during onboarding.");
+                Console.WriteLine();
+            }
+            else
+            {
+                Console.WriteLine("\n✅ Configuration validated - all credentials present!");
             }
         }
 
@@ -108,11 +110,13 @@ namespace FXOptionsSimulator
             Console.WriteLine($"Host:            {Host}");
             Console.WriteLine($"Port:            {Port}");
             Console.WriteLine($"SenderCompID:    {SenderCompID}");
+            Console.WriteLine($"OnBehalfOfCompID: {OnBehalfOfCompID}");
+            Console.WriteLine($"Username:        {Username}");
+            Console.WriteLine($"Password:        {new string('*', Password?.Length ?? 0)}");  // ← CHANGED: Mask password
             Console.WriteLine($"QuoteReqPrefix:  {QuoteReqPrefix}");
             Console.WriteLine($"Heartbeat:       {HeartbeatInterval}s");
             Console.WriteLine($"Available LPs:   {string.Join(", ", LiquidityProviders.Keys)}");
             Console.WriteLine($"Authorized Pairs: {string.Join(", ", AuthorizedPairs)}");
-            Console.WriteLine();
 
             Validate();
         }
@@ -120,7 +124,7 @@ namespace FXOptionsSimulator
 
     /// <summary>
     /// Realistic market data for testing
-    /// Based on actual EURUSD levels as of Oct 2024
+    /// Based on actual levels as of Oct 2024
     /// </summary>
     public class MarketData
     {
@@ -181,8 +185,7 @@ namespace FXOptionsSimulator
         {
             if (ForwardPoints.TryGetValue(tenor, out var points))
             {
-                // Convert points to rate based on ccy pair convention
-                var divisor = Symbol.StartsWith("USD") ? 10000.0 : 10000.0;
+                var divisor = 10000.0;
                 return SpotRate + (points / divisor);
             }
             return SpotRate;
@@ -193,15 +196,14 @@ namespace FXOptionsSimulator
             var key = $"{tenor}_ATM";
             if (ImpliedVols.TryGetValue(key, out var vol))
             {
-                // Adjust for delta (simplified)
                 if (delta != 50)
                 {
-                    var skew = 0.05 * Math.Abs(delta - 50) / 25.0; // Rough skew adjustment
+                    var skew = 0.05 * Math.Abs(delta - 50) / 25.0;
                     vol += skew;
                 }
                 return vol;
             }
-            return 8.0; // Default fallback
+            return 8.0;
         }
     }
 }

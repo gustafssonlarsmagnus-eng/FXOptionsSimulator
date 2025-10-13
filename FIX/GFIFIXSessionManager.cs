@@ -44,19 +44,17 @@ namespace FXOptionsSimulator.FIX
 
         private void OverrideSettingsFromConfig()
         {
-            // This lets you use FenicsConfig.cs values instead of quickfix.cfg
-            // Useful for switching between UAT and PROD
-            
             var sessionID = _settings.GetSessions().First();
             var dictionary = _settings.Get(sessionID);
-            
+
             dictionary.SetString("SenderCompID", _config.SenderCompID);
             dictionary.SetString("OnBehalfOfCompID", _config.OnBehalfOfCompID);
+            dictionary.SetString("TargetCompID", "GFI");
             dictionary.SetString("SocketConnectHost", _config.Host);
-            dictionary.SetLong("SocketConnectPort", _config.Port);
+            dictionary.SetString("SocketConnectPort", _config.Port.ToString());  // ← Make sure it's .ToString()
             dictionary.SetString("Username", _config.Username);
             dictionary.SetString("Password", _config.Password);
-            dictionary.SetLong("HeartBtInt", _config.HeartbeatInterval);
+            dictionary.SetString("HeartBtInt", _config.HeartbeatInterval.ToString());  // ← Make sure it's .ToString()
         }
 
         #region IApplication Implementation
@@ -86,6 +84,7 @@ namespace FXOptionsSimulator.FIX
             {
                 message.SetField(new StringField(553, _config.Username));
                 message.SetField(new StringField(554, _config.Password));
+                // message.SetField(new OnBehalfOfCompID(_config.OnBehalfOfCompID));  // ← Not needed for logon
                 message.SetField(new ResetSeqNumFlag(true));
                 
                 Console.WriteLine($"Sending Logon: User={_config.Username}");

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using FXOptionsSimulator.FIX;  // ← ADD THIS LINE AT THE TOP
 
 namespace FXOptionsSimulator
 {
@@ -10,7 +11,7 @@ namespace FXOptionsSimulator
     public class TradeStructure
     {
         public string Underlying { get; set; }
-        public string CurrencyPair { get; set; }
+        public string CurrencyPair { get; set; }  // ← ADD THIS LINE
         public string StructureType { get; set; } // "CallSpread", "PutSpread", "RiskReversal", "Seagull"
         public List<OptionLeg> Legs { get; set; } = new List<OptionLeg>();
         public string PremiumCurrency { get; set; }

@@ -1,4 +1,6 @@
-﻿using System;
+﻿using FXOptionsSimulator.FIX;
+using QuickFix.Config;
+using System;
 using System.Collections.Generic;
 
 namespace FXOptionsSimulator
@@ -12,14 +14,59 @@ namespace FXOptionsSimulator
             Console.WriteLine("Simulating GFI Fenics RFS Workflow with Realistic Data");
             Console.WriteLine("=" + new string('=', 78));
 
-            // Show configuration
-            var config = new FenicsConfig();
-            config.PrintConfig();
+            Console.WriteLine("\n" + new string('=', 78));
+            Console.WriteLine("TESTING FIX CONFIGURATION");
+            Console.WriteLine(new string('=', 78));
 
-            Console.WriteLine("\nPress any key to start demo...");
+            FenicsConfig config = null;  // ← DECLARE HERE, outside try block
+
+            try
+            {
+                // Show configuration
+                config = new FenicsConfig();  // ← ASSIGN HERE
+                config.PrintConfig();
+
+                // Test FIX session manager initialization
+                Console.WriteLine("\n>>> Initializing FIX Session Manager...");
+                var fixSession = new FXOptionsSimulator.FIX.GFIFIXSessionManager(config);
+
+                Console.WriteLine("✅ FIX Session Manager created successfully!");
+                Console.WriteLine("✅ Configuration files loaded (quickfix.cfg, FIX44.xml)");
+                Console.WriteLine("✅ Ready to connect once GFI provides credentials");
+
+                Console.WriteLine("\n⚠️  NEXT STEPS:");
+                Console.WriteLine("   1. Email GFI to get: SenderCompID, Username, Password, QuoteReqID prefix");
+                Console.WriteLine("   2. Update FenicsConfig.cs with real credentials");
+                Console.WriteLine("   3. Test connection with: fixSession.Start()");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"\n❌ FIX Setup Error: {ex.Message}");
+                Console.WriteLine($"\nStack Trace:\n{ex.StackTrace}");
+                Console.WriteLine("\nMake sure quickfix.cfg and FIX44.xml are in the output folder!");
+                return;  // ← Exit if config fails
+            }
+
+            Console.WriteLine("\n" + new string('=', 78));
+            Console.WriteLine("\nPress any key to continue...");
             Console.ReadKey();
 
-            RunRealisticDemo();
+            Console.WriteLine("\n" + new string('=', 78));
+            Console.WriteLine("Choose what to test:");
+            Console.WriteLine("  [1] Test REAL FIX Connection to GFI");
+            Console.WriteLine("  [2] Run Simulator Demo");
+            Console.Write("\nYour choice: ");
+            var choice = Console.ReadKey();
+            Console.WriteLine("\n");
+
+            if (choice.KeyChar == '1')
+            {
+                TestRealFIXConnection(config);  // ← Now config is in scope!
+            }
+            else
+            {
+                RunRealisticDemo();
+            }
 
             Console.WriteLine("\n" + "=" + new string('=', 78));
             Console.WriteLine("Demo complete! Press any key to exit...");
@@ -194,5 +241,59 @@ namespace FXOptionsSimulator
 
             Console.WriteLine("\n>>> These structures can be created from your OVML parser");
         }
+        static void TestRealFIXConnection(FenicsConfig config)
+        {
+            Console.WriteLine("\n" + new string('=', 78));
+            Console.WriteLine("TESTING REAL FIX CONNECTION TO GFI UAT");
+            Console.WriteLine(new string('=', 78));
+
+            var fixSession = new FXOptionsSimulator.FIX.GFIFIXSessionManager(config);
+
+            fixSession.LogonSuccessful += (sender, msg) =>
+                Console.WriteLine($"\n🎉🎉🎉 {msg} 🎉🎉🎉");
+
+            fixSession.LogonFailed += (sender, msg) =>
+                Console.WriteLine($"\n❌ LOGON FAILED: {msg}");
+
+            // fixSession.StatusMessage += (sender, msg) => 
+            //     Console.WriteLine($"[FIX] {msg}");
+
+            try
+            {
+                Console.WriteLine("\n⏳ Starting FIX initiator...");
+                Console.WriteLine("   Connecting to: quotes.stage2.gfifx.com:443");
+                Console.WriteLine("   As: WEBFENICS55 (SWES)\n");
+
+                fixSession.Start();
+
+                Console.WriteLine("⏳ Waiting for logon response...");
+                System.Threading.Thread.Sleep(10000);
+
+                if (fixSession.IsLoggedOn)
+                {
+                    Console.WriteLine("\n" + new string('=', 78));
+                    Console.WriteLine("SUCCESS! CONNECTED TO GFI UAT!");
+                    Console.WriteLine(new string('=', 78));
+                    Console.WriteLine("\nYou can now:");
+                    Console.WriteLine("  ✅ Send quote requests to real LPs");
+                    Console.WriteLine("  ✅ Receive live streaming quotes");
+                    Console.WriteLine("  ✅ Execute real trades (in UAT)");
+                    Console.WriteLine("\nPress any key to disconnect...");
+                    Console.ReadKey();
+                }
+                else
+                {
+                    Console.WriteLine("\n⚠️ Connection timeout or logon failed");
+                    Console.WriteLine("\nCheck logs in: ./fixlog/ folder");
+                }
+
+                fixSession.Stop();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"\n❌ Connection Error: {ex.Message}");
+            }
+        }
+
     }
 }

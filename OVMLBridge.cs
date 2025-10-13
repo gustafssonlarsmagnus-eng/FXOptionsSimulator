@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using FXOptionsSimulator.FIX;
 using System.Linq;
 using System.Text.RegularExpressions;
 
