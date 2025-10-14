@@ -9,6 +9,11 @@ namespace FXOptionsSimulator
     {
         static void Main(string[] args)
         {
+            // CRITICAL: Accept self-signed certificates for UAT
+            System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12;
+            System.Net.ServicePointManager.ServerCertificateValidationCallback =
+                (sender, cert, chain, sslPolicyErrors) => true; // Accept any certificate
+
             Console.WriteLine("=" + new string('=', 78));
             Console.WriteLine("FIX FX Options Trading Simulator - Live Ready Version");
             Console.WriteLine("Simulating GFI Fenics RFS Workflow with Realistic Data");
