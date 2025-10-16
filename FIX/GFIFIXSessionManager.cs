@@ -44,17 +44,25 @@ namespace FXOptionsSimulator.FIX
 
         private void OverrideSettingsFromConfig()
         {
+            Console.WriteLine("[DEBUG] OverrideSettingsFromConfig called!");
+
             var sessionID = _settings.GetSessions().First();
             var dictionary = _settings.Get(sessionID);
 
             dictionary.SetString("SenderCompID", _config.SenderCompID);
             dictionary.SetString("OnBehalfOfCompID", _config.OnBehalfOfCompID);
             dictionary.SetString("TargetCompID", "GFI");
-            dictionary.SetString("SocketConnectHost", _config.Host);
-            dictionary.SetString("SocketConnectPort", _config.Port.ToString());  // ← Make sure it's .ToString()
+
+            // FORCE localhost tunnel connection
+            dictionary.SetString("SocketConnectHost", "localhost");
+            dictionary.SetString("SocketConnectPort", "9443");
+
             dictionary.SetString("Username", _config.Username);
             dictionary.SetString("Password", _config.Password);
-            dictionary.SetString("HeartBtInt", _config.HeartbeatInterval.ToString());  // ← Make sure it's .ToString()
+            dictionary.SetString("HeartBtInt", _config.HeartbeatInterval.ToString());
+
+            Console.WriteLine($"[DEBUG] Connection forced to: localhost:9443");
+            Console.WriteLine($"[DEBUG] Override complete - Host: localhost, Port: 9443");
         }
 
         #region IApplication Implementation

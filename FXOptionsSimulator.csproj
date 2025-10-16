@@ -8,16 +8,21 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="QuickFix.Net.NETCore.FIX44" Version="1.8.1" />
+    <None Remove="FIX44.xml" />
+    <None Remove="quickfix.cfg" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="FIX44.xml">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="quickfix.cfg">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <Content Include="FIX44.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="quickfix.cfg">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="QuickFix.Net.NETCore.FIX44" Version="1.8.1" />
   </ItemGroup>
 
 </Project>
