@@ -18,6 +18,8 @@ namespace FXOptionsSimulator.FIX  // ← CHANGED: Added .FIX namespace
         public string Username { get; set; } = "swed.obo.stg.api";
         public string Password { get; set; } = "ZQcZokEOLjb9";
 
+        public bool IsTestMode { get; set; } = false;
+
         // ========== CONNECTION SETTINGS ==========
         public string Host { get; set; } = "quotes.stage2.gfifx.com";
         public int Port { get; set; } = 443;

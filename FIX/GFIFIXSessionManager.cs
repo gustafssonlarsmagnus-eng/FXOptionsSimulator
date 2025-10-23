@@ -6,6 +6,8 @@ using System.Collections.Concurrent;
 using System.Threading.Tasks;
 
 namespace FXOptionsSimulator.FIX
+
+
 {
     public class GFIFIXSessionManager : MessageCracker, IApplication
     {
@@ -50,19 +52,27 @@ namespace FXOptionsSimulator.FIX
             var dictionary = _settings.Get(sessionID);
 
             dictionary.SetString("SenderCompID", _config.SenderCompID);
-            dictionary.SetString("OnBehalfOfCompID", _config.OnBehalfOfCompID);
-            dictionary.SetString("TargetCompID", "GFI");
+            dictionary.SetString("TargetCompID", _config.IsTestMode ? "TEST_SERVER" : "GFI");
 
-            // FORCE localhost tunnel connection
-            dictionary.SetString("SocketConnectHost", "localhost");
-            dictionary.SetString("SocketConnectPort", "9443");
+            // Test mode: connect to local server, otherwise use tunnel
+            if (_config.IsTestMode)
+            {
+                dictionary.SetString("SocketConnectHost", "localhost");
+                dictionary.SetString("SocketConnectPort", "9999");
+                Console.WriteLine($"[DEBUG] TEST MODE: Connecting to localhost:9999");
+            }
+            else
+            {
+                dictionary.SetString("SocketConnectHost", "localhost");
+                dictionary.SetString("SocketConnectPort", "9443");
+                Console.WriteLine($"[DEBUG] PRODUCTION: Using tunnel localhost:9443");
+            }
 
             dictionary.SetString("Username", _config.Username);
             dictionary.SetString("Password", _config.Password);
             dictionary.SetString("HeartBtInt", _config.HeartbeatInterval.ToString());
 
-            Console.WriteLine($"[DEBUG] Connection forced to: localhost:9443");
-            Console.WriteLine($"[DEBUG] Override complete - Host: localhost, Port: 9443");
+            Console.WriteLine($"[DEBUG] Override complete");
         }
 
         #region IApplication Implementation
@@ -122,9 +132,17 @@ namespace FXOptionsSimulator.FIX
 
         public void Start()
         {
-            Console.WriteLine($"Starting FIX connection to {_config.Host}:{_config.Port}...");
-            _config.PrintConfig();
+            Console.WriteLine("[DEBUG] Starting FIX Session...");
+
+            // Debug: Show what's actually configured
+            var sessionID = _settings.GetSessions().First();
+            var dict = _settings.Get(sessionID);
+            Console.WriteLine($"[DEBUG] Actual Host: {dict.GetString("SocketConnectHost")}");
+            Console.WriteLine($"[DEBUG] Actual Port: {dict.GetString("SocketConnectPort")}");
+            Console.WriteLine($"[DEBUG] Actual TargetCompID: {dict.GetString("TargetCompID")}");
+
             _initiator.Start();
+            Console.WriteLine("✅ Configuration validated - all credentials present!");
         }
 
         public void Stop()

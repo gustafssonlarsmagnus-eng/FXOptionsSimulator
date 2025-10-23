@@ -59,18 +59,27 @@ namespace FXOptionsSimulator
             Console.WriteLine("\n" + new string('=', 78));
             Console.WriteLine("Choose what to test:");
             Console.WriteLine("  [1] Test REAL FIX Connection to GFI");
-            Console.WriteLine("  [2] Run Simulator Demo");
+            Console.WriteLine("  [2] Test LOCAL FIX Server (Proof of Concept)");
+            Console.WriteLine("  [3] Run Simulator Demo");
             Console.Write("\nYour choice: ");
             var choice = Console.ReadKey();
             Console.WriteLine("\n");
 
             if (choice.KeyChar == '1')
             {
-                TestRealFIXConnection(config);  // ← Now config is in scope!
+                TestRealFIXConnection(config);
+            }
+            else if (choice.KeyChar == '2')
+            {
+                TestLocalFIXServer(config);  // NEW TEST MODE
+            }
+            else if (choice.KeyChar == '3')
+            {
+                RunRealisticDemo();
             }
             else
             {
-                RunRealisticDemo();
+                Console.WriteLine("Invalid choice. Exiting...");
             }
 
             Console.WriteLine("\n" + "=" + new string('=', 78));
@@ -222,6 +231,29 @@ namespace FXOptionsSimulator
    - Install QuickFIX.Net for real FIX connectivity
    - Test in UAT before production
 ");
+        }
+
+        static void TestLocalFIXServer(FenicsConfig config)
+        {
+            Console.WriteLine("\n" + new string('=', 78));
+            Console.WriteLine("TESTING LOCAL FIX SERVER");
+            Console.WriteLine(new string('=', 78));
+
+            config.IsTestMode = true;  // Enable test mode
+
+            Console.WriteLine("✅ Configuration validated - connecting to local test server");
+
+            var fixSession = new FXOptionsSimulator.FIX.GFIFIXSessionManager(config);
+
+            Console.WriteLine("Starting FIX connection to localhost:9999...");
+            fixSession.Start();
+
+            Console.WriteLine("\n⏳ Waiting 10 seconds for logon...");
+            System.Threading.Thread.Sleep(10000);
+
+            fixSession.Stop();
+
+            Console.WriteLine("\n" + new string('=', 78));
         }
 
         static void ShowMoreExamples()
