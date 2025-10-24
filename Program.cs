@@ -23,17 +23,17 @@ namespace FXOptionsSimulator
             Console.WriteLine("TESTING FIX CONFIGURATION");
             Console.WriteLine(new string('=', 78));
 
-            FenicsConfig config = null;  // ← DECLARE HERE, outside try block
+            FenicsConfig config = null;
 
             try
             {
                 // Show configuration
-                config = new FenicsConfig();  // ← ASSIGN HERE
+                config = new FenicsConfig();
                 config.PrintConfig();
 
                 // Test FIX session manager initialization
                 Console.WriteLine("\n>>> Initializing FIX Session Manager...");
-                var fixSession = new FXOptionsSimulator.FIX.GFIFIXSessionManager(config);
+                var fixSession = new GFIFIXSessionManager("quickfix.cfg");
 
                 Console.WriteLine("✅ FIX Session Manager created successfully!");
                 Console.WriteLine("✅ Configuration files loaded (quickfix.cfg, FIX44.xml)");
@@ -49,7 +49,7 @@ namespace FXOptionsSimulator
                 Console.WriteLine($"\n❌ FIX Setup Error: {ex.Message}");
                 Console.WriteLine($"\nStack Trace:\n{ex.StackTrace}");
                 Console.WriteLine("\nMake sure quickfix.cfg and FIX44.xml are in the output folder!");
-                return;  // ← Exit if config fails
+                return;
             }
 
             Console.WriteLine("\n" + new string('=', 78));
@@ -71,7 +71,7 @@ namespace FXOptionsSimulator
             }
             else if (choice.KeyChar == '2')
             {
-                TestLocalFIXServer(config);  // NEW TEST MODE
+                TestLocalFIXServer(config);
             }
             else if (choice.KeyChar == '3')
             {
@@ -95,7 +95,6 @@ namespace FXOptionsSimulator
             Console.WriteLine("DEMO WITH YOUR OVML PARSER");
             Console.WriteLine(new string('=', 78));
 
-            // Simulate your OVML parser output
             var ovmlResult = new
             {
                 OVML = "OVML USDSEK 12/12/25 2L B,S 9.6000P,9.1500P N10M,50M VA SP9.3950",
@@ -109,14 +108,12 @@ namespace FXOptionsSimulator
             Console.WriteLine($"  {ovmlResult.OVML}");
             Console.WriteLine($"  Method: {ovmlResult.ParseMethod}\n");
 
-            // Convert to TradeStructure
             var trade = OVMLBridge.ConvertToTradeStructure(ovmlResult);
             trade.PrintSummary();
 
             Console.WriteLine("\n>>> Requesting quotes from 3 liquidity providers...");
             System.Threading.Thread.Sleep(1000);
 
-            // Step 1: Send Quote Requests
             Console.WriteLine("\nSTEP 1: Sending Quote Requests");
             Console.WriteLine(new string('-', 78));
 
@@ -128,14 +125,12 @@ namespace FXOptionsSimulator
 
             System.Threading.Thread.Sleep(1500);
 
-            // Step 2: Receive streaming quotes
             Console.WriteLine("\n\nSTEP 2: Receiving streaming quotes");
             Console.WriteLine(new string('-', 78));
             Console.WriteLine("(In real environment, quotes stream continuously until you cancel)");
 
             sim.StreamQuotes(groupId, numUpdates: 2, delayMs: 1500);
 
-            // Step 3: Show best prices
             Console.WriteLine("\n\nSTEP 3: Market Analysis");
             Console.WriteLine(new string('-', 78));
 
@@ -143,22 +138,22 @@ namespace FXOptionsSimulator
 
             if (bestBid != null && bestOffer != null)
             {
-                var bidVol = double.Parse(bestBid.Get(TagStrings.Volatility));
-                var offerVol = double.Parse(bestOffer.Get(TagStrings.Volatility));
+                // FIXED: Added .ToString() to Tags constants
+                var bidVol = double.Parse(bestBid.Get(Tags.Volatility.ToString()));
+                var offerVol = double.Parse(bestOffer.Get(Tags.Volatility.ToString()));
                 var spread = offerVol - bidVol;
                 var midVol = (bidVol + offerVol) / 2;
 
-                Console.WriteLine($"\nBest BID:   {bestBid.Get(TagStrings.OnBehalfOfCompID),-10} @ {bidVol:F3} vol");
-                Console.WriteLine($"Best OFFER: {bestOffer.Get(TagStrings.OnBehalfOfCompID),-10} @ {offerVol:F3} vol");
+                // FIXED: Added .ToString() to Tags constants
+                Console.WriteLine($"\nBest BID:   {bestBid.Get(Tags.OnBehalfOfCompID.ToString()),-10} @ {bidVol:F3} vol");
+                Console.WriteLine($"Best OFFER: {bestOffer.Get(Tags.OnBehalfOfCompID.ToString()),-10} @ {offerVol:F3} vol");
                 Console.WriteLine($"\nBid-Offer Spread: {spread:F3} vol ({spread / midVol * 10000:F0} bps)");
                 Console.WriteLine($"Mid Market:       {midVol:F3} vol");
 
-                // Decision logic
                 Console.WriteLine("\n>>> Market looks tight. Ready to execute...");
                 System.Threading.Thread.Sleep(2000);
             }
 
-            // Step 4: Execute
             if (bestBid != null)
             {
                 Console.WriteLine("\n\nSTEP 4: Executing Trade (SELL to hit BID)");
@@ -170,7 +165,8 @@ namespace FXOptionsSimulator
                 if (filled)
                 {
                     Console.WriteLine("\n✓ TRADE FILLED");
-                    Console.WriteLine($"  Counterparty: {bestBid.Get(TagStrings.OnBehalfOfCompID)}");
+                    // FIXED: Added .ToString() to Tags constant
+                    Console.WriteLine($"  Counterparty: {bestBid.Get(Tags.OnBehalfOfCompID.ToString())}");
                     Console.WriteLine($"  Structure:    {trade.StructureType}");
                     Console.WriteLine($"  Notional:     {trade.Legs[0].NotionalMM}M {trade.Legs[0].NotionalCurrency}");
                     Console.WriteLine("\n>>> Next: You'll receive Trade Capture Report (35=AE) with full STP details");
@@ -188,7 +184,6 @@ namespace FXOptionsSimulator
 
             System.Threading.Thread.Sleep(1000);
 
-            // Step 5: Cleanup
             Console.WriteLine("\n\nSTEP 5: Canceling quote streams");
             Console.WriteLine(new string('-', 78));
             Console.WriteLine("IMPORTANT: Always cancel streams when done to avoid unnecessary market data");
@@ -198,7 +193,6 @@ namespace FXOptionsSimulator
                 sim.CancelStream(quoteReqId);
             }
 
-            // Summary
             Console.WriteLine("\n\n" + new string('=', 78));
             Console.WriteLine("KEY LEARNINGS FOR LIVE ENVIRONMENT");
             Console.WriteLine(new string('=', 78));
@@ -239,11 +233,11 @@ namespace FXOptionsSimulator
             Console.WriteLine("TESTING LOCAL FIX SERVER");
             Console.WriteLine(new string('=', 78));
 
-            config.IsTestMode = true;  // Enable test mode
+            config.IsTestMode = true;
 
             Console.WriteLine("✅ Configuration validated - connecting to local test server");
 
-            var fixSession = new FXOptionsSimulator.FIX.GFIFIXSessionManager(config);
+            var fixSession = new GFIFIXSessionManager("quickfix.cfg");
 
             Console.WriteLine("Starting FIX connection to localhost:9999...");
             fixSession.Start();
@@ -260,45 +254,44 @@ namespace FXOptionsSimulator
         {
             Console.WriteLine("\n=== ADDITIONAL TRADE EXAMPLES ===\n");
 
-            // Call spread
             var callSpread = TradeStructure.CreateCallSpread();
             callSpread.PrintSummary();
 
             System.Threading.Thread.Sleep(1000);
 
-            // Risk reversal
             var rr = TradeStructure.CreateRiskReversal();
             rr.PrintSummary();
 
             System.Threading.Thread.Sleep(1000);
 
-            // Seagull
             var seagull = TradeStructure.CreateSeagull();
             seagull.PrintSummary();
 
             Console.WriteLine("\n>>> These structures can be created from your OVML parser");
         }
+
         static void TestRealFIXConnection(FenicsConfig config)
         {
             Console.WriteLine("\n" + new string('=', 78));
             Console.WriteLine("TESTING REAL FIX CONNECTION TO GFI UAT");
             Console.WriteLine(new string('=', 78));
 
-            var fixSession = new FXOptionsSimulator.FIX.GFIFIXSessionManager(config);
+            var fixSession = new GFIFIXSessionManager("quickfix.cfg");
 
-            fixSession.LogonSuccessful += (sender, msg) =>
-                Console.WriteLine($"\n🎉🎉🎉 {msg} 🎉🎉🎉");
+            fixSession.Application.OnLogonEvent += (sessionId) =>
+            {
+                Console.WriteLine($"\n🎉🎉🎉 LOGGED ON: {sessionId} 🎉🎉🎉");
+            };
 
-            fixSession.LogonFailed += (sender, msg) =>
-                Console.WriteLine($"\n❌ LOGON FAILED: {msg}");
-
-            // fixSession.StatusMessage += (sender, msg) => 
-            //     Console.WriteLine($"[FIX] {msg}");
+            fixSession.Application.OnLogoutEvent += (sessionId) =>
+            {
+                Console.WriteLine($"\n❌ LOGGED OUT: {sessionId}");
+            };
 
             try
             {
                 Console.WriteLine("\n⏳ Starting FIX initiator...");
-                Console.WriteLine("   Connecting to: quotes.stage2.gfifx.com:443");
+                Console.WriteLine("   Connecting to: localhost:9443 (tunnel to quotes.stage2.gfifx.com)");
                 Console.WriteLine("   As: WEBFENICS55 (SWES)\n");
 
                 fixSession.Start();
@@ -321,7 +314,8 @@ namespace FXOptionsSimulator
                 else
                 {
                     Console.WriteLine("\n⚠️ Connection timeout or logon failed");
-                    Console.WriteLine("\nCheck logs in: ./fixlog/ folder");
+                    Console.WriteLine("\nCheck logs in: ./log/ folder");
+                    Console.WriteLine("Check store in: ./store/ folder");
                 }
 
                 fixSession.Stop();
@@ -329,8 +323,8 @@ namespace FXOptionsSimulator
             catch (Exception ex)
             {
                 Console.WriteLine($"\n❌ Connection Error: {ex.Message}");
+                Console.WriteLine($"\nStack Trace:\n{ex.StackTrace}");
             }
         }
-
     }
 }

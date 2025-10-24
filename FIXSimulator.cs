@@ -333,7 +333,10 @@ namespace FXOptionsSimulator
         private void LogMessage(string direction, FIXMessage msg)
         {
             var arrow = direction == "SENT" ? ">>>" : "<<<";
-            Console.WriteLine($"[{direction}] {arrow} {msg}");
+
+            // Show ALL fields for debugging (including leg-specific fields)
+            var allFields = string.Join("|", msg.Fields.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+            Console.WriteLine($"[{direction}] {arrow} FIX({msg.MsgType}): {allFields}");
         }
     }
 }

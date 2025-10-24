@@ -1,259 +1,237 @@
 ﻿using QuickFix;
 using QuickFix.Fields;
 using QuickFix.Transport;
+using QuickFix.FIX44;
 using System;
-using System.Collections.Concurrent;
-using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace FXOptionsSimulator.FIX
-
-
 {
-    public class GFIFIXSessionManager : MessageCracker, IApplication
+    public class GFIFIXSessionManager
     {
         private readonly SocketInitiator _initiator;
         private readonly SessionSettings _settings;
-        private readonly IMessageStoreFactory _storeFactory;
-        private readonly ILogFactory _logFactory;
-        private readonly FenicsConfig _config; // ← Use your helper class
-        
+        private readonly GFIFIXApplication _application;
         private SessionID _sessionID;
-        private bool _isLoggedOn;
-        
-        // Events
-        public event EventHandler<QuoteReceivedEventArgs> QuoteReceived;
-        public event EventHandler<ExecutionReportEventArgs> ExecutionReportReceived;
-        public event EventHandler<string> QuoteRequestRejected;
-        public event EventHandler<string> LogonSuccessful;
-        public event EventHandler<string> LogonFailed;
 
-        // Constructor with optional config
-        public GFIFIXSessionManager(FenicsConfig config = null, string configFile = "quickfix.cfg")
+        public GFIFIXApplication Application => _application;
+        public bool IsLoggedOn => _application.IsLoggedOn;
+
+        public GFIFIXSessionManager(string configFile = "quickfix.cfg")
         {
-            _config = config ?? new FenicsConfig();
-            _config.Validate(); // Show warnings if not configured
-            
+            Console.WriteLine($"[FIX Manager] Initializing with config: {configFile}");
+
+            _application = new GFIFIXApplication();
             _settings = new SessionSettings(configFile);
-            
-            // Override settings with FenicsConfig values
-            OverrideSettingsFromConfig();
-            
-            _storeFactory = new FileStoreFactory(_settings);
-            _logFactory = new FileLogFactory(_settings);
-            
-            _initiator = new SocketInitiator(this, _storeFactory, _settings, _logFactory);
+
+            var storeFactory = new FileStoreFactory(_settings);
+            var logFactory = new FileLogFactory(_settings);
+
+            _initiator = new SocketInitiator(_application, storeFactory, _settings, logFactory);
+
+            Console.WriteLine("[FIX Manager] Initialized successfully");
         }
-
-        private void OverrideSettingsFromConfig()
-        {
-            Console.WriteLine("[DEBUG] OverrideSettingsFromConfig called!");
-
-            var sessionID = _settings.GetSessions().First();
-            var dictionary = _settings.Get(sessionID);
-
-            dictionary.SetString("SenderCompID", _config.SenderCompID);
-            dictionary.SetString("TargetCompID", _config.IsTestMode ? "TEST_SERVER" : "GFI");
-
-            // Test mode: connect to local server, otherwise use tunnel
-            if (_config.IsTestMode)
-            {
-                dictionary.SetString("SocketConnectHost", "localhost");
-                dictionary.SetString("SocketConnectPort", "9999");
-                Console.WriteLine($"[DEBUG] TEST MODE: Connecting to localhost:9999");
-            }
-            else
-            {
-                dictionary.SetString("SocketConnectHost", "localhost");
-                dictionary.SetString("SocketConnectPort", "9443");
-                Console.WriteLine($"[DEBUG] PRODUCTION: Using tunnel localhost:9443");
-            }
-
-            dictionary.SetString("Username", _config.Username);
-            dictionary.SetString("Password", _config.Password);
-            dictionary.SetString("HeartBtInt", _config.HeartbeatInterval.ToString());
-
-            Console.WriteLine($"[DEBUG] Override complete");
-        }
-
-        #region IApplication Implementation
-
-        public void OnCreate(SessionID sessionID)
-        {
-            _sessionID = sessionID;
-            Console.WriteLine($"FIX Session Created: {sessionID}");
-        }
-
-        public void OnLogon(SessionID sessionID)
-        {
-            _isLoggedOn = true;
-            Console.WriteLine($"✅ FIX Session Logged On: {sessionID}");
-            LogonSuccessful?.Invoke(this, $"Connected to GFI at {DateTime.UtcNow:u}");
-        }
-
-        public void OnLogout(SessionID sessionID)
-        {
-            _isLoggedOn = false;
-            Console.WriteLine($"❌ FIX Session Logged Out: {sessionID}");
-        }
-
-        public void ToAdmin(Message message, SessionID sessionID)
-        {
-            if (message.Header.GetString(Tags.MsgType) == MsgType.LOGON)
-            {
-                message.SetField(new StringField(553, _config.Username));
-                message.SetField(new StringField(554, _config.Password));
-                // message.SetField(new OnBehalfOfCompID(_config.OnBehalfOfCompID));  // ← Not needed for logon
-                message.SetField(new ResetSeqNumFlag(true));
-                
-                Console.WriteLine($"Sending Logon: User={_config.Username}");
-            }
-        }
-
-        public void FromAdmin(Message message, SessionID sessionID)
-        {
-            var msgType = message.Header.GetString(Tags.MsgType);
-            Console.WriteLine($"Admin Message: {msgType}");
-        }
-
-        public void ToApp(Message message, SessionID sessionID)
-        {
-            var msgType = message.Header.GetString(Tags.MsgType);
-            Console.WriteLine($"→ Sending: {msgType}");
-        }
-
-        public void FromApp(Message message, SessionID sessionID)
-        {
-            Crack(message, sessionID);
-        }
-
-        #endregion
 
         #region Connection Management
 
         public void Start()
         {
-            Console.WriteLine("[DEBUG] Starting FIX Session...");
+            Console.WriteLine("\n" + new string('=', 60));
+            Console.WriteLine("STARTING FIX SESSION");
+            Console.WriteLine(new string('=', 60));
 
-            // Debug: Show what's actually configured
-            var sessionID = _settings.GetSessions().First();
-            var dict = _settings.Get(sessionID);
-            Console.WriteLine($"[DEBUG] Actual Host: {dict.GetString("SocketConnectHost")}");
-            Console.WriteLine($"[DEBUG] Actual Port: {dict.GetString("SocketConnectPort")}");
-            Console.WriteLine($"[DEBUG] Actual TargetCompID: {dict.GetString("TargetCompID")}");
+            try
+            {
+                var sessions = _settings.GetSessions();
+                if (sessions.Count == 0)
+                {
+                    throw new Exception("No sessions found in config file!");
+                }
 
-            _initiator.Start();
-            Console.WriteLine("✅ Configuration validated - all credentials present!");
+                _sessionID = sessions.First();
+                var dict = _settings.Get(_sessionID);
+
+                Console.WriteLine("\n[FIX Config]:");
+                Console.WriteLine($"  SenderCompID: {dict.GetString("SenderCompID")}");
+                Console.WriteLine($"  TargetCompID: {dict.GetString("TargetCompID")}");
+                Console.WriteLine($"  Host: {dict.GetString("SocketConnectHost")}");
+                Console.WriteLine($"  Port: {dict.GetString("SocketConnectPort")}");
+
+                _initiator.Start();
+                Console.WriteLine("\n[FIX Manager] ✓ Initiator started");
+                Console.WriteLine("[FIX Manager] Waiting for logon...\n");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"\n[FIX Manager] ✗ ERROR starting: {ex.Message}");
+                throw;
+            }
         }
 
         public void Stop()
         {
+            Console.WriteLine("\n[FIX Manager] Stopping session...");
             _initiator.Stop();
+            Console.WriteLine("[FIX Manager] ✓ Stopped");
         }
-
-        public bool IsLoggedOn => _isLoggedOn;
 
         #endregion
 
-        #region Send Quote Request (35=R)
+        #region Send Quote Request
 
-        public async Task<string> SendQuoteRequestAsync(
-            string lpName,              // "MS", "UBS", etc.
-            string requestGroupID,      // e.g., "3-MyGroup"
-            TradeStructure trade)
+        public string SendQuoteRequest(TradeStructure trade, string lpName, string groupId)
         {
-            if (!_isLoggedOn)
-                throw new InvalidOperationException("Not logged on to GFI");
-
-            // Get LP CompID from config
-            if (!_config.LiquidityProviders.TryGetValue(lpName, out var lpCompID))
-                throw new ArgumentException($"Unknown LP: {lpName}");
-
-            var quoteReqID = GenerateQuoteReqID();
-            
-            var msg = new QuickFix.FIX44.QuoteRequest();
-            
-            // Standard fields
-            msg.SetField(new QuoteReqID(quoteReqID));
-            msg.SetField(new DeliverToCompID(lpCompID));
-            msg.SetField(new Symbol(trade.CurrencyPair));
-            msg.SetField(new TransactTime(DateTime.UtcNow));
-            
-            // Custom fields
-            msg.SetField(new IntField(8051, 1)); // NoBanksReqFenics
-            msg.SetField(new StringField(8053, lpCompID)); // BankRequestedCompID
-            msg.SetField(new IntField(9126, GetStructureCode(trade))); // Structure
-            msg.SetField(new IntField(8505, 7)); // RegulationVenueType = OTC
-            
-            // Add more fields based on your TradeStructure
-            // ... (legs, tenor, etc.)
-            
-            Console.WriteLine($"📤 Quote Request → {lpName}: {quoteReqID}");
-            
-            return await Task.Run(() =>
+            if (!IsLoggedOn)
             {
+                throw new InvalidOperationException("Cannot send quote request - not logged on!");
+            }
+
+            string quoteReqID = $"FENICS.5015500.Q{DateTime.UtcNow.Ticks}";
+
+            Console.WriteLine($"\n[FIX Manager] Building Quote Request for {lpName}");
+            Console.WriteLine($"  QuoteReqID: {quoteReqID}");
+            Console.WriteLine($"  GroupID: {groupId}");
+            Console.WriteLine($"  Underlying: {trade.Underlying}");
+            Console.WriteLine($"  Legs: {trade.Legs.Count}");
+
+            try
+            {
+                var msg = BuildQuoteRequestMessage(trade, lpName, quoteReqID, groupId);
                 Session.SendToTarget(msg, _sessionID);
+
+                Console.WriteLine($"[FIX Manager] ✓ Quote Request sent to {lpName}");
                 return quoteReqID;
-            });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[FIX Manager] ✗ ERROR sending quote request: {ex.Message}");
+                throw;
+            }
         }
 
-        private string GenerateQuoteReqID()
+        private QuickFix.FIX44.QuoteRequest BuildQuoteRequestMessage(
+     TradeStructure trade,
+     string lpName,
+     string quoteReqID,
+     string groupId)
         {
-            var unique = Guid.NewGuid().ToString("N").Substring(0, 12).ToUpper();
-            return $"{_config.QuoteReqPrefix}{unique}";
+            var msg = new QuickFix.FIX44.QuoteRequest();
+
+            // HEADER
+            msg.Header.SetField(new DeliverToCompID(lpName));
+
+            // BODY FIELDS in exact order
+            msg.SetField(new TradeDate(DateTime.UtcNow.ToString("yyyyMMdd")));
+            msg.QuoteReqID = new QuoteReqID(quoteReqID);
+            msg.SetField(new StringField(5475, "S"));
+            msg.SetField(new StringField(5830, trade.PremiumCurrency));
+            msg.SetField(new StringField(9016, "1"));
+
+            int structureCode = GetStructureCode(trade.StructureType);
+            msg.SetField(new StringField(9126, structureCode.ToString()));
+            msg.SetField(new StringField(9943, "2"));
+
+            // Build NoRelatedSym group manually
+            var noRelatedSym = new QuickFix.FIX44.QuoteRequest.NoRelatedSymGroup();
+            noRelatedSym.Symbol = new Symbol(trade.Underlying);
+            noRelatedSym.SetField(new StringField(6258, structureCode.ToString()));
+            noRelatedSym.SetField(new QuoteType(QuoteType.TRADEABLE));
+            noRelatedSym.NoLegs = new NoLegs(trade.Legs.Count);
+
+            // Build each leg with STRICT field order using only primitives
+            for (int i = 0; i < trade.Legs.Count; i++)
+            {
+                var leg = trade.Legs[i];
+                var legGroup = new QuickFix.FIX44.QuoteRequest.NoRelatedSymGroup.NoLegsGroup();
+
+                // Use direct field assignment in exact order
+                legGroup.SetField(new LegSymbol(trade.Underlying)); // 600
+                legGroup.SetField(new StringField(6714, leg.OptionType == "CALL" ? "1" : "2")); // LegStrategy
+                legGroup.SetField(new StringField(9125, "1")); // Cutoff
+                legGroup.SetField(new StringField(6215, leg.Tenor)); // Tenor
+                legGroup.SetField(new LegMaturityDate(leg.ExpiryDate.ToString("yyyyMMdd"))); // 611
+                legGroup.SetField(new StringField(743, leg.ExpiryDate.AddDays(2).ToString("yyyyMMdd"))); // DeliveryDate
+                legGroup.SetField(new StringField(5020, DateTime.UtcNow.AddDays(2).ToString("yyyyMMdd"))); // PremiumDelivery
+                legGroup.SetField(new LegStrikePrice((decimal)leg.Strike)); // 612
+                legGroup.SetField(new StringField(9019, "2")); // FXOptionStyle
+                legGroup.SetField(new StringField(6351, (i == 0 || leg.Position == "SAME") ? "1" : "2")); // Position
+                legGroup.SetField(new StringField(9904, "2")); // PriceIndicator
+
+                if (trade.SpotReference > 0)
+                {
+                    legGroup.SetField(new StringField(5235, trade.SpotReference.ToString("F4"))); // LegSpotRate
+                }
+
+                legGroup.SetField(new LegCurrency(trade.PremiumCurrency)); // 556
+                legGroup.SetField(new StringField(687, leg.NotionalMM.ToString())); // LegQty
+                legGroup.SetField(new StringField(7940, leg.LegID)); // LegStrategyID
+                legGroup.SetField(new StringField(9034, leg.NotionalCurrency)); // LegStrategyCcy
+
+                noRelatedSym.AddGroup(legGroup);
+
+                Console.WriteLine($"    Leg {i + 1}: {leg.Direction} {leg.OptionType} @ {leg.Strike} ({leg.NotionalMM}M)");
+            }
+
+            msg.AddGroup(noRelatedSym);
+
+            return msg;
+        }
+
+        private int GetStructureCode(string structureType)
+        {
+            return structureType switch
+            {
+                "Vanilla" => 1,
+                "CallSpread" => 8,
+                "PutSpread" => 9,
+                "RiskReversal" => 5,
+                "Seagull" => 10,
+                _ => 1
+            };
         }
 
         #endregion
 
-        #region Message Handlers (abbreviated - add full versions)
+        #region Send Execution (35=AB)
 
-        public void OnMessage(QuickFix.FIX44.Quote quote, SessionID sessionID)
+        public void SendExecution(FIXMessage quote, string side)
         {
-            Console.WriteLine("📥 Quote received");
-            // Parse and fire event
-        }
+            if (!IsLoggedOn)
+            {
+                throw new InvalidOperationException("Cannot execute - not logged on!");
+            }
 
-        public void OnMessage(QuickFix.FIX44.QuoteStatusReport report, SessionID sessionID)
-        {
-            Console.WriteLine("📥 Quote Status Report");
-        }
+            string quoteID = quote.Get(Tags.QuoteID.ToString());
+            string quoteReqID = quote.Get(Tags.QuoteReqID.ToString());
+            string clOrdID = $"ORD{DateTime.UtcNow.Ticks}";
 
-        public void OnMessage(QuickFix.FIX44.ExecutionReport execReport, SessionID sessionID)
-        {
-            Console.WriteLine("📥 Execution Report");
-        }
+            Console.WriteLine($"\n[FIX Manager] Executing trade");
+            Console.WriteLine($"  ClOrdID: {clOrdID}");
+            Console.WriteLine($"  QuoteID: {quoteID}");
+            Console.WriteLine($"  Side: {side}");
 
-        public void OnMessage(QuickFix.FIX44.QuoteRequestReject reject, SessionID sessionID)
-        {
-            Console.WriteLine("⚠️ Quote Request Rejected");
-        }
+            try
+            {
+                var msg = new QuickFix.FIX44.NewOrderMultileg();
 
-        public void OnMessage(QuickFix.FIX44.BusinessMessageReject reject, SessionID sessionID)
-        {
-            Console.WriteLine("⚠️ Business Message Reject");
+                msg.ClOrdID = new ClOrdID(clOrdID);
+                msg.SetField(new QuoteID(quoteID));
+                msg.Side = new Side(side == "SELL" ? Side.SELL : Side.BUY);
+                msg.SetField(new TransactTime(DateTime.UtcNow));
+                msg.OrdType = new OrdType(OrdType.PREVIOUSLY_QUOTED);
+
+                Session.SendToTarget(msg, _sessionID);
+
+                Console.WriteLine($"[FIX Manager] ✓ Execution sent");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[FIX Manager] ✗ ERROR executing: {ex.Message}");
+                throw;
+            }
         }
 
         #endregion
-
-        #region Helper Methods
-
-        private int GetStructureCode(TradeStructure trade)
-        {
-            // Map your structure types to GFI codes
-            return 1; // Placeholder
-        }
-
-        #endregion
-    }
-
-    // Event args classes
-    public class QuoteReceivedEventArgs : EventArgs
-    {
-        public string QuoteID { get; set; }
-        public string LPName { get; set; }
-    }
-
-    public class ExecutionReportEventArgs : EventArgs
-    {
-        public string OrderID { get; set; }
     }
 }
