@@ -4,6 +4,7 @@ using QuickFix.Transport;
 using QuickFix.FIX44;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 
 namespace FXOptionsSimulator.FIX
@@ -21,14 +22,84 @@ namespace FXOptionsSimulator.FIX
         public GFIFIXSessionManager(string configFile = "quickfix.cfg")
         {
             Console.WriteLine($"[FIX Manager] Initializing with config: {configFile}");
+            Console.WriteLine($"[FIX Manager] Config file path: {Path.GetFullPath(configFile)}");
+            Console.WriteLine($"[FIX Manager] Config exists: {File.Exists(configFile)}");
 
             _application = new GFIFIXApplication();
-            _settings = new SessionSettings(configFile);
 
-            var storeFactory = new FileStoreFactory(_settings);
-            var logFactory = new FileLogFactory(_settings);
+            try
+            {
+                Console.WriteLine("[FIX Manager] Loading SessionSettings...");
+                _settings = new SessionSettings(configFile);
+                Console.WriteLine("[FIX Manager] SessionSettings loaded successfully");
 
-            _initiator = new SocketInitiator(_application, storeFactory, _settings, logFactory);
+                // Print all settings to see what's being parsed
+                Console.WriteLine("\n[FIX Manager] === Config Contents ===");
+                var sessions = _settings.GetSessions();
+
+                Console.WriteLine($"[FIX Manager] Number of sessions: {sessions.Count}");
+
+                foreach (var sessionID in sessions)
+                {
+                    Console.WriteLine($"[FIX Manager] Session: {sessionID}");
+                    var dict = _settings.Get(sessionID);
+
+                    // Try to read common settings
+                    string[] commonKeys = {
+                        "BeginString", "SenderCompID", "TargetCompID",
+                        "SocketConnectHost", "SocketConnectPort", "HeartBtInt",
+                        "ConnectionType", "OnBehalfOfCompID", "ResetOnLogon",
+                        "EncryptMethod", "ReconnectInterval", "StartTime", "EndTime"
+                    };
+
+                    foreach (var key in commonKeys)
+                    {
+                        try
+                        {
+                            if (dict.Has(key))
+                            {
+                                var value = dict.GetString(key);
+                                Console.WriteLine($"  {key} = {value}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"  {key} = ERROR: {ex.Message}");
+                        }
+                    }
+                }
+                Console.WriteLine("[FIX Manager] === End Config Contents ===\n");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[FIX Manager] ✗ ERROR loading config: {ex.Message}");
+                Console.WriteLine($"[FIX Manager] Exception type: {ex.GetType().Name}");
+                Console.WriteLine($"[FIX Manager] Stack trace: {ex.StackTrace}");
+                throw;
+            }
+
+            try
+            {
+                Console.WriteLine("[FIX Manager] Creating MemoryStoreFactory (no file storage)...");
+                var storeFactory = new MemoryStoreFactory();
+                Console.WriteLine("[FIX Manager] ✓ MemoryStoreFactory created");
+
+                Console.WriteLine("[FIX Manager] Creating ScreenLogFactory (console logging)...");
+                var logFactory = new ScreenLogFactory(_settings);
+                Console.WriteLine("[FIX Manager] ✓ ScreenLogFactory created");
+
+                Console.WriteLine("[FIX Manager] Creating SocketInitiator...");
+                _initiator = new SocketInitiator(_application, storeFactory, _settings, logFactory);
+                Console.WriteLine("[FIX Manager] ✓ SocketInitiator created");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[FIX Manager] ✗ ERROR creating initiator: {ex.Message}");
+                Console.WriteLine($"[FIX Manager] Exception type: {ex.GetType().Name}");
+                Console.WriteLine($"[FIX Manager] Inner exception: {ex.InnerException?.Message}");
+                Console.WriteLine($"[FIX Manager] Stack trace: {ex.StackTrace}");
+                throw;
+            }
 
             Console.WriteLine("[FIX Manager] Initialized successfully");
         }
@@ -58,13 +129,46 @@ namespace FXOptionsSimulator.FIX
                 Console.WriteLine($"  Host: {dict.GetString("SocketConnectHost")}");
                 Console.WriteLine($"  Port: {dict.GetString("SocketConnectPort")}");
 
-                _initiator.Start();
-                Console.WriteLine("\n[FIX Manager] ✓ Initiator started");
+                Console.WriteLine($"\n[FIX Manager] About to call _initiator.Start()...");
+                Console.WriteLine($"[FIX Manager] Initiator is null: {_initiator == null}");
+                Console.WriteLine($"[FIX Manager] SessionID: {_sessionID}");
+
+                try
+                {
+                    _initiator.Start();
+                    Console.WriteLine("\n[FIX Manager] ✓ Initiator started successfully");
+                }
+                catch (Exception startEx)
+                {
+                    Console.WriteLine($"\n[FIX Manager] ✗ ERROR in _initiator.Start()");
+                    Console.WriteLine($"[FIX Manager] Error message: {startEx.Message}");
+                    Console.WriteLine($"[FIX Manager] Exception type: {startEx.GetType().Name}");
+
+                    if (startEx.InnerException != null)
+                    {
+                        Console.WriteLine($"\n[FIX Manager] === INNER EXCEPTION ===");
+                        Console.WriteLine($"[FIX Manager] Inner message: {startEx.InnerException.Message}");
+                        Console.WriteLine($"[FIX Manager] Inner type: {startEx.InnerException.GetType().Name}");
+
+                        if (startEx.InnerException.InnerException != null)
+                        {
+                            Console.WriteLine($"\n[FIX Manager] === INNER INNER EXCEPTION ===");
+                            Console.WriteLine($"[FIX Manager] Inner inner message: {startEx.InnerException.InnerException.Message}");
+                            Console.WriteLine($"[FIX Manager] Inner inner type: {startEx.InnerException.InnerException.GetType().Name}");
+                        }
+                    }
+
+                    Console.WriteLine($"\n[FIX Manager] === FULL STACK TRACE ===");
+                    Console.WriteLine(startEx.StackTrace);
+
+                    throw;
+                }
+
                 Console.WriteLine("[FIX Manager] Waiting for logon...\n");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"\n[FIX Manager] ✗ ERROR starting: {ex.Message}");
+                Console.WriteLine($"\n[FIX Manager] ✗ ERROR starting session: {ex.Message}");
                 throw;
             }
         }
@@ -111,10 +215,10 @@ namespace FXOptionsSimulator.FIX
         }
 
         private QuickFix.FIX44.QuoteRequest BuildQuoteRequestMessage(
-     TradeStructure trade,
-     string lpName,
-     string quoteReqID,
-     string groupId)
+            TradeStructure trade,
+            string lpName,
+            string quoteReqID,
+            string groupId)
         {
             var msg = new QuickFix.FIX44.QuoteRequest();
 

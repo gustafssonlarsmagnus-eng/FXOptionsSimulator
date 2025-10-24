@@ -61,7 +61,13 @@ namespace FXOptionsSimulator.FIX
             {
                 message.SetField(new Username("swed.obo.stg.api"));
                 message.SetField(new Password("ZQcZokEOLjb9"));
+
                 Console.WriteLine("[GFI FIX] >>> Sending Logon with credentials");
+
+                // ADD THESE DEBUG LINES:
+                Console.WriteLine($"[DEBUG] Full Logon Message:");
+                Console.WriteLine($"{message.ToString()}");
+                Console.WriteLine($"[DEBUG] End Logon Message");
             }
         }
 

@@ -9,14 +9,10 @@
 
   <ItemGroup>
     <None Remove="FIX44.xml" />
-    <None Remove="quickfix.cfg" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="FIX44.xml">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="quickfix.cfg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
@@ -24,6 +20,12 @@
   <ItemGroup>
     <PackageReference Include="QuickFix.Net.NETCore" Version="1.8.1" />
     <PackageReference Include="QuickFix.Net.NETCore.FIX44" Version="1.8.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="quickfix.cfg">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>
