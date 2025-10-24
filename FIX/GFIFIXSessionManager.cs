@@ -15,6 +15,7 @@ namespace FXOptionsSimulator.FIX
         private readonly SessionSettings _settings;
         private readonly GFIFIXApplication _application;
         private SessionID _sessionID;
+        private RawFIXMessageBuilder _rawBuilder;  // NEW
 
         public GFIFIXApplication Application => _application;
         public bool IsLoggedOn => _application.IsLoggedOn;
@@ -26,6 +27,7 @@ namespace FXOptionsSimulator.FIX
             Console.WriteLine($"[FIX Manager] Config exists: {File.Exists(configFile)}");
 
             _application = new GFIFIXApplication();
+            _rawBuilder = new RawFIXMessageBuilder("FIX.4.4", "WEBFENICS55", "GFI");  // NEW
 
             try
             {
@@ -201,85 +203,46 @@ namespace FXOptionsSimulator.FIX
 
             try
             {
-                var msg = BuildQuoteRequestMessage(trade, lpName, quoteReqID, groupId);
-                Session.SendToTarget(msg, _sessionID);
+                // Get current sequence number and increment for next message
+                var session = Session.LookupSession(_sessionID);
+                int seqNum = session.NextSenderMsgSeqNum;
+                _rawBuilder.SetMsgSeqNum(seqNum);
 
-                Console.WriteLine($"[FIX Manager] ✓ Quote Request sent to {lpName}");
+                // Build raw message with exact field order
+                string rawMessage = _rawBuilder.BuildQuoteRequest(trade, lpName, quoteReqID, groupId);
+
+                Console.WriteLine($"\n[DEBUG] Raw Quote Request Message (SeqNum={seqNum}):");
+                Console.WriteLine($"{rawMessage.Replace("\x01", "|")}");
+                Console.WriteLine($"[DEBUG] End of message\n");
+
+                // Send raw message
+                bool sent = session.Send(rawMessage);
+
+                if (sent)
+                {
+                    // Manually increment the sequence number since we sent raw
+                    session.NextSenderMsgSeqNum = seqNum + 1;
+                    Console.WriteLine($"[FIX Manager] ✓ Quote Request sent to {lpName} (SeqNum={seqNum})");
+                }
+                else
+                {
+                    Console.WriteLine($"[FIX Manager] ✗ Failed to send message");
+                }
+
+                for (int i = 0; i < trade.Legs.Count; i++)
+                {
+                    var leg = trade.Legs[i];
+                    Console.WriteLine($"    Leg {i + 1}: {leg.Direction} {leg.OptionType} @ {leg.Strike} ({leg.NotionalMM}M)");
+                }
+
                 return quoteReqID;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[FIX Manager] ✗ ERROR sending quote request: {ex.Message}");
+                Console.WriteLine($"[FIX Manager] Stack trace: {ex.StackTrace}");
                 throw;
             }
-        }
-
-        private QuickFix.FIX44.QuoteRequest BuildQuoteRequestMessage(
-            TradeStructure trade,
-            string lpName,
-            string quoteReqID,
-            string groupId)
-        {
-            var msg = new QuickFix.FIX44.QuoteRequest();
-
-            // HEADER
-            msg.Header.SetField(new DeliverToCompID(lpName));
-
-            // BODY FIELDS in exact order
-            msg.SetField(new TradeDate(DateTime.UtcNow.ToString("yyyyMMdd")));
-            msg.QuoteReqID = new QuoteReqID(quoteReqID);
-            msg.SetField(new StringField(5475, "S"));
-            msg.SetField(new StringField(5830, trade.PremiumCurrency));
-            msg.SetField(new StringField(9016, "1"));
-
-            int structureCode = GetStructureCode(trade.StructureType);
-            msg.SetField(new StringField(9126, structureCode.ToString()));
-            msg.SetField(new StringField(9943, "2"));
-
-            // Build NoRelatedSym group manually
-            var noRelatedSym = new QuickFix.FIX44.QuoteRequest.NoRelatedSymGroup();
-            noRelatedSym.Symbol = new Symbol(trade.Underlying);
-            noRelatedSym.SetField(new StringField(6258, structureCode.ToString()));
-            noRelatedSym.SetField(new QuoteType(QuoteType.TRADEABLE));
-            noRelatedSym.NoLegs = new NoLegs(trade.Legs.Count);
-
-            // Build each leg with STRICT field order using only primitives
-            for (int i = 0; i < trade.Legs.Count; i++)
-            {
-                var leg = trade.Legs[i];
-                var legGroup = new QuickFix.FIX44.QuoteRequest.NoRelatedSymGroup.NoLegsGroup();
-
-                // Use direct field assignment in exact order
-                legGroup.SetField(new LegSymbol(trade.Underlying)); // 600
-                legGroup.SetField(new StringField(6714, leg.OptionType == "CALL" ? "1" : "2")); // LegStrategy
-                legGroup.SetField(new StringField(9125, "1")); // Cutoff
-                legGroup.SetField(new StringField(6215, leg.Tenor)); // Tenor
-                legGroup.SetField(new LegMaturityDate(leg.ExpiryDate.ToString("yyyyMMdd"))); // 611
-                legGroup.SetField(new StringField(743, leg.ExpiryDate.AddDays(2).ToString("yyyyMMdd"))); // DeliveryDate
-                legGroup.SetField(new StringField(5020, DateTime.UtcNow.AddDays(2).ToString("yyyyMMdd"))); // PremiumDelivery
-                legGroup.SetField(new LegStrikePrice((decimal)leg.Strike)); // 612
-                legGroup.SetField(new StringField(9019, "2")); // FXOptionStyle
-                legGroup.SetField(new StringField(6351, (i == 0 || leg.Position == "SAME") ? "1" : "2")); // Position
-                legGroup.SetField(new StringField(9904, "2")); // PriceIndicator
-
-                if (trade.SpotReference > 0)
-                {
-                    legGroup.SetField(new StringField(5235, trade.SpotReference.ToString("F4"))); // LegSpotRate
-                }
-
-                legGroup.SetField(new LegCurrency(trade.PremiumCurrency)); // 556
-                legGroup.SetField(new StringField(687, leg.NotionalMM.ToString())); // LegQty
-                legGroup.SetField(new StringField(7940, leg.LegID)); // LegStrategyID
-                legGroup.SetField(new StringField(9034, leg.NotionalCurrency)); // LegStrategyCcy
-
-                noRelatedSym.AddGroup(legGroup);
-
-                Console.WriteLine($"    Leg {i + 1}: {leg.Direction} {leg.OptionType} @ {leg.Strike} ({leg.NotionalMM}M)");
-            }
-
-            msg.AddGroup(noRelatedSym);
-
-            return msg;
         }
 
         private int GetStructureCode(string structureType)
