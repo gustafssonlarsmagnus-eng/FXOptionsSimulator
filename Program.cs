@@ -111,13 +111,22 @@ namespace FXOptionsSimulator
             var trade = OVMLBridge.ConvertToTradeStructure(ovmlResult);
             trade.PrintSummary();
 
-            Console.WriteLine("\n>>> Requesting quotes from 3 liquidity providers...");
-            System.Threading.Thread.Sleep(1000);
+            var lps = new List<string> {
+    "MS",
+    "GOLDMAN",
+    "BARCLAYS",
+    "HSBC",
+    "BNP",
+    "CIBC",
+    "DEUT",
+    "DBS"
+};
 
+            Console.WriteLine($"\n>>> Requesting quotes from {lps.Count} liquidity providers...");
+            System.Threading.Thread.Sleep(1000);
             Console.WriteLine("\nSTEP 1: Sending Quote Requests");
             Console.WriteLine(new string('-', 78));
 
-            var lps = new List<string> { "MS", "UBS", "NATWEST" };
             var (groupId, requests) = sim.SendQuoteRequest(
                 underlying: trade.Underlying,
                 lps: lps

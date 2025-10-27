@@ -29,9 +29,15 @@ namespace FXOptionsSimulator
             {
                 ["MS"] = new SimulatedLiquidityProvider("MS", baseVol: 7.8, spread: 0.3),
                 ["UBS"] = new SimulatedLiquidityProvider("UBS", baseVol: 8.1, spread: 0.4),
-                ["NATWEST"] = new SimulatedLiquidityProvider("NATWEST", baseVol: 7.9, spread: 0.35)
+                ["NATWEST"] = new SimulatedLiquidityProvider("NATWEST", baseVol: 7.9, spread: 0.35),
+                ["GOLDMAN"] = new SimulatedLiquidityProvider("GOLDMAN", baseVol: 7.7, spread: 0.32),
+                ["BARCLAYS"] = new SimulatedLiquidityProvider("BARCLAYS", baseVol: 8.0, spread: 0.38),
+                ["HSBC"] = new SimulatedLiquidityProvider("HSBC", baseVol: 7.9, spread: 0.36),
+                ["BNP"] = new SimulatedLiquidityProvider("BNP", baseVol: 8.2, spread: 0.42),
+                ["CIBC"] = new SimulatedLiquidityProvider("CIBC", baseVol: 8.3, spread: 0.45),
+                ["DEUT"] = new SimulatedLiquidityProvider("DEUT", baseVol: 7.8, spread: 0.33),
+                ["DBS"] = new SimulatedLiquidityProvider("DBS", baseVol: 8.1, spread: 0.40)
             };
-
             _activeRequests = new Dictionary<string, List<StreamInfo>>();
             _seqNum = 1;
         }

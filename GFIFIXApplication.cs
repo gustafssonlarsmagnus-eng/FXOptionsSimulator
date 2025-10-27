@@ -99,7 +99,24 @@ namespace FXOptionsSimulator.FIX
 
         public void FromApp(QuickFix.Message message, SessionID sessionID)
         {
-            Crack(message, sessionID);
+            string msgType = message.Header.GetString(35);
+            Console.WriteLine($"[GFI FIX] <<< App: {msgType}");
+
+            try
+            {
+                Crack(message, sessionID);
+            }
+            catch (UnsupportedMessageType)
+            {
+                Console.WriteLine($"[GFI FIX] ⚠️  Unsupported message type: {msgType}");
+                Console.WriteLine($"[GFI FIX] Message: {message.ToString().Replace("\x01", "|")}");
+                // Don't throw - just log and continue
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[GFI FIX] ⚠️  Error processing message {msgType}: {ex.Message}");
+                Console.WriteLine($"[GFI FIX] Stack: {ex.StackTrace}");
+            }
         }
 
         #endregion
@@ -113,7 +130,7 @@ namespace FXOptionsSimulator.FIX
         {
             try
             {
-                string lpName = quote.GetString(Tags.OnBehalfOfCompID);
+                string lpName = quote.Header.GetString(Tags.OnBehalfOfCompID);
                 string quoteReqID = quote.GetString(Tags.QuoteReqID);
                 string quoteID = quote.GetString(Tags.QuoteID);
                 string sideStr = quote.GetString(Tags.Side);
