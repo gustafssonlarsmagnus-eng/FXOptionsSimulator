@@ -193,7 +193,7 @@ namespace FXOptionsSimulator.FIX
                 throw new InvalidOperationException("Cannot send quote request - not logged on!");
             }
 
-            string quoteReqID = $"FENICS.5015500.Q{DateTime.UtcNow.Ticks}";
+            string quoteReqID = $"FENICS.31491.Q{DateTime.UtcNow.Ticks}";
 
             Console.WriteLine($"\n[FIX Manager] Building Quote Request for {lpName}");
             Console.WriteLine($"  QuoteReqID: {quoteReqID}");

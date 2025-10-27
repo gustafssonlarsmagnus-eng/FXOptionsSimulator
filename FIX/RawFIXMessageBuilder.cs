@@ -42,6 +42,7 @@ namespace FXOptionsSimulator.FIX
             AddField(49, _senderCompID); // SenderCompID
             AddField(52, GetUTCTimestamp()); // SendingTime
             AddField(56, _targetCompID); // TargetCompID
+            AddField(115, "SWES"); // OnBehalfOfCompID - ADD THIS LINE
 
             // DeliverToCompID in header
             AddField(128, lpName);
@@ -56,6 +57,7 @@ namespace FXOptionsSimulator.FIX
             int structureCode = GetStructureCode(trade.StructureType);
             AddField(9126, structureCode.ToString()); // Structure
             AddField(9943, "2"); // ProductQuoteType
+            AddField(8051, groupId); 
             AddField(146, "1"); // NoRelatedSym
 
             // NoRelatedSym group - EXACT order from GFI sample
