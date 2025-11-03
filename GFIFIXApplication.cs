@@ -9,6 +9,7 @@ namespace FXOptionsSimulator.FIX
     public class GFIFIXApplication : MessageCracker, IApplication
     {
         private readonly ConcurrentDictionary<string, StreamInfo> _quotes;
+        private ConcurrentDictionary<string, string> _quoteReqToGroupID = new ConcurrentDictionary<string, string>();
 
         public class StreamInfo
         {
@@ -64,7 +65,6 @@ namespace FXOptionsSimulator.FIX
 
                 Console.WriteLine("[GFI FIX] >>> Sending Logon with credentials");
 
-                // ADD THESE DEBUG LINES:
                 Console.WriteLine($"[DEBUG] Full Logon Message:");
                 Console.WriteLine($"{message.ToString()}");
                 Console.WriteLine($"[DEBUG] End Logon Message");
@@ -76,7 +76,6 @@ namespace FXOptionsSimulator.FIX
             var msgType = message.Header.GetField(Tags.MsgType);
             Console.WriteLine($"[GFI FIX] <<< Admin: {msgType}");
 
-            // If it's a reject, parse it
             if (msgType == "3")
             {
                 ParseRejectMessage(message);
@@ -88,7 +87,6 @@ namespace FXOptionsSimulator.FIX
             var msgType = message.Header.GetField(Tags.MsgType);
             Console.WriteLine($"[GFI FIX] >>> Sending: {msgType}");
 
-            // ADD THIS - Print full message for Quote Requests
             if (msgType == "R")
             {
                 Console.WriteLine($"\n[DEBUG] Full Quote Request Message:");
@@ -110,7 +108,6 @@ namespace FXOptionsSimulator.FIX
             {
                 Console.WriteLine($"[GFI FIX] ⚠️  Unsupported message type: {msgType}");
                 Console.WriteLine($"[GFI FIX] Message: {message.ToString().Replace("\x01", "|")}");
-                // Don't throw - just log and continue
             }
             catch (Exception ex)
             {
@@ -123,9 +120,6 @@ namespace FXOptionsSimulator.FIX
 
         #region Message Handlers
 
-        /// <summary>
-        /// Handle Quote messages (35=S) - THIS IS WHERE PREMIUMS ARRIVE
-        /// </summary>
         public void OnMessage(QuickFix.FIX44.Quote quote, SessionID sessionID)
         {
             try
@@ -144,13 +138,14 @@ namespace FXOptionsSimulator.FIX
                 var fixMsg = ConvertQuoteToFIXMessage(quote);
 
                 string key = $"{quoteReqID}_{lpName}";
+                string groupID = GetGroupIDForQuoteReqID(quoteReqID);
 
                 _quotes.AddOrUpdate(key,
                     new StreamInfo
                     {
                         LP = lpName,
                         QuoteReqID = quoteReqID,
-                        GroupID = "default",
+                        GroupID = groupID,
                         BidQuote = side == "BID" ? fixMsg : null,
                         OfferQuote = side == "OFFER" ? fixMsg : null,
                         LastUpdate = DateTime.UtcNow
@@ -174,9 +169,6 @@ namespace FXOptionsSimulator.FIX
             }
         }
 
-        /// <summary>
-        /// Handle Quote Status Report (35=AI)
-        /// </summary>
         public void OnMessage(QuickFix.FIX44.QuoteStatusReport report, SessionID sessionID)
         {
             string quoteReqID = report.GetString(Tags.QuoteReqID);
@@ -186,34 +178,31 @@ namespace FXOptionsSimulator.FIX
             Console.WriteLine($"  QuoteReqID: {quoteReqID}");
             Console.WriteLine($"  QuoteStatus: {quoteStatus} ({GetQuoteStatusText(quoteStatus)})");
 
-            if (report.IsSetField(58)) // Text
+            if (report.IsSetField(58))
             {
                 string text = report.GetString(58);
                 Console.WriteLine($"  Text: {text}");
             }
         }
 
-        /// <summary>
-        /// Handle Quote Request Reject (35=AG)
-        /// </summary>
         public void OnMessage(QuickFix.FIX44.QuoteRequestReject reject, SessionID sessionID)
         {
             Console.WriteLine($"\n[GFI FIX] <<< QUOTE REQUEST REJECT (35=AG)");
             Console.WriteLine(new string('=', 60));
 
-            if (reject.IsSetField(131)) // QuoteReqID
+            if (reject.IsSetField(131))
             {
                 string quoteReqID = reject.GetString(131);
                 Console.WriteLine($"  QuoteReqID: {quoteReqID}");
             }
 
-            if (reject.IsSetField(658)) // QuoteRequestRejectReason
+            if (reject.IsSetField(658))
             {
                 int rejectReason = reject.GetInt(658);
                 Console.WriteLine($"  RejectReason: {rejectReason} ({GetQuoteRequestRejectReasonText(rejectReason)})");
             }
 
-            if (reject.IsSetField(58)) // Text
+            if (reject.IsSetField(58))
             {
                 string rejectText = reject.GetString(58);
                 Console.WriteLine($"  ⚠️  Reject Text: {rejectText}");
@@ -222,9 +211,6 @@ namespace FXOptionsSimulator.FIX
             Console.WriteLine(new string('=', 60));
         }
 
-        /// <summary>
-        /// Handle Session Reject (35=3)
-        /// </summary>
         public void OnMessage(QuickFix.FIX44.Reject reject, SessionID sessionID)
         {
             Console.WriteLine($"\n[GFI FIX] <<< SESSION REJECT (35=3)");
@@ -263,9 +249,6 @@ namespace FXOptionsSimulator.FIX
             Console.WriteLine(new string('=', 60));
         }
 
-        /// <summary>
-        /// Handle Execution Report (35=8) - Trade fill/reject
-        /// </summary>
         public void OnMessage(QuickFix.FIX44.ExecutionReport execReport, SessionID sessionID)
         {
             string clOrdID = execReport.GetString(Tags.ClOrdID);
@@ -283,7 +266,7 @@ namespace FXOptionsSimulator.FIX
             {
                 Console.WriteLine("  ✗ REJECTED");
 
-                if (execReport.IsSetField(58)) // Text
+                if (execReport.IsSetField(58))
                 {
                     string text = execReport.GetString(58);
                     Console.WriteLine($"  Reason: {text}");
@@ -291,27 +274,24 @@ namespace FXOptionsSimulator.FIX
             }
         }
 
-        /// <summary>
-        /// Handle Business Message Reject (35=j)
-        /// </summary>
         public void OnMessage(QuickFix.FIX44.BusinessMessageReject reject, SessionID sessionID)
         {
             Console.WriteLine($"\n[GFI FIX] <<< BUSINESS MESSAGE REJECT (35=j)");
             Console.WriteLine(new string('=', 60));
 
-            if (reject.IsSetField(372)) // RefMsgType
+            if (reject.IsSetField(372))
             {
                 string refMsgType = reject.GetString(372);
                 Console.WriteLine($"  RefMsgType: {refMsgType}");
             }
 
-            if (reject.IsSetField(380)) // BusinessRejectReason
+            if (reject.IsSetField(380))
             {
                 int rejectReason = reject.GetInt(380);
                 Console.WriteLine($"  BusinessRejectReason: {rejectReason} ({GetBusinessRejectReasonText(rejectReason)})");
             }
 
-            if (reject.IsSetField(58)) // Text
+            if (reject.IsSetField(58))
             {
                 string rejectText = reject.GetString(58);
                 Console.WriteLine($"  ⚠️  Reject Text: {rejectText}");
@@ -320,21 +300,18 @@ namespace FXOptionsSimulator.FIX
             Console.WriteLine(new string('=', 60));
         }
 
-        /// <summary>
-        /// Handle StaticData message (35=SD) - GFI custom message
-        /// </summary>
         public void OnMessage(QuickFix.Message message, SessionID sessionID)
         {
             try
             {
                 var msgType = message.Header.GetField(Tags.MsgType);
 
-                if (msgType == "SD") // StaticData
+                if (msgType == "SD")
                 {
                     Console.WriteLine($"\n[GFI FIX] <<< StaticData (35=SD) - LP Information");
                     Console.WriteLine(new string('-', 60));
 
-                    if (message.IsSetField(1663)) // NumElements
+                    if (message.IsSetField(1663))
                     {
                         int numElements = message.GetInt(1663);
                         Console.WriteLine($"  Available Liquidity Providers: {numElements}\n");
@@ -349,11 +326,11 @@ namespace FXOptionsSimulator.FIX
                                     ? group.GetString(Tags.OnBehalfOfCompID)
                                     : "N/A";
 
-                                string displayName = group.IsSetField(1402) // DisplayName
+                                string displayName = group.IsSetField(1402)
                                     ? group.GetString(1402)
                                     : "N/A";
 
-                                string priceRequest = group.IsSetField(9996) // PriceRequest
+                                string priceRequest = group.IsSetField(9996)
                                     ? group.GetString(9996)
                                     : "N/A";
 
@@ -385,37 +362,47 @@ namespace FXOptionsSimulator.FIX
 
         #region Helper Methods
 
+        public void RegisterQuoteRequest(string quoteReqID, string groupID)
+        {
+            _quoteReqToGroupID[quoteReqID] = groupID;
+        }
+
+        private string GetGroupIDForQuoteReqID(string quoteReqID)
+        {
+            return _quoteReqToGroupID.TryGetValue(quoteReqID, out string groupID) ? groupID : "unknown";
+        }
+
         private void ParseRejectMessage(QuickFix.Message message)
         {
             try
             {
                 Console.WriteLine($"\n[GFI FIX] === PARSING REJECT MESSAGE ===");
 
-                if (message.IsSetField(45)) // RefSeqNum
+                if (message.IsSetField(45))
                 {
                     int refSeqNum = message.GetInt(45);
                     Console.WriteLine($"  RefSeqNum: {refSeqNum}");
                 }
 
-                if (message.IsSetField(371)) // RefTagID
+                if (message.IsSetField(371))
                 {
                     int refTagID = message.GetInt(371);
                     Console.WriteLine($"  RefTagID: {refTagID}");
                 }
 
-                if (message.IsSetField(372)) // RefMsgType
+                if (message.IsSetField(372))
                 {
                     string refMsgType = message.GetString(372);
                     Console.WriteLine($"  RefMsgType: {refMsgType}");
                 }
 
-                if (message.IsSetField(373)) // SessionRejectReason
+                if (message.IsSetField(373))
                 {
                     int reason = message.GetInt(373);
                     Console.WriteLine($"  SessionRejectReason: {reason} ({GetSessionRejectReasonText(reason)})");
                 }
 
-                if (message.IsSetField(58)) // Text
+                if (message.IsSetField(58))
                 {
                     string text = message.GetString(58);
                     Console.WriteLine($"  ⚠️  Text: {text}");
@@ -432,38 +419,58 @@ namespace FXOptionsSimulator.FIX
         private FIXMessage ConvertQuoteToFIXMessage(QuickFix.FIX44.Quote quote)
         {
             var msg = new FIXMessage(MsgTypes.Quote);
-
-            msg.Set(Tags.OnBehalfOfCompID.ToString(), quote.GetString(Tags.OnBehalfOfCompID));
+            msg.Set(Tags.OnBehalfOfCompID.ToString(), quote.Header.GetString(Tags.OnBehalfOfCompID));
             msg.Set(Tags.QuoteReqID.ToString(), quote.GetString(Tags.QuoteReqID));
             msg.Set(Tags.QuoteID.ToString(), quote.GetString(Tags.QuoteID));
             msg.Set(Tags.Side.ToString(), quote.GetString(Tags.Side));
             msg.Set(Tags.Symbol.ToString(), quote.GetString(Tags.Symbol));
 
+            // DIRECT PREMIUM AND VOLATILITY (not in legs for GFI)
+            Console.WriteLine($"  [DEBUG] Checking for direct premium/vol fields...");
+
+            if (quote.IsSetField(5678)) // Volatility
+            {
+                string vol = quote.GetString(5678);
+                msg.Set("leg1_5678", vol);
+                Console.WriteLine($"  [DEBUG] Direct Vol (5678): {vol}");
+            }
+
+            if (quote.IsSetField(5844)) // Premium
+            {
+                string prem = quote.GetString(5844);
+                msg.Set("leg1_5844", prem);
+                Console.WriteLine($"  [DEBUG] Direct Premium (5844): {prem}");
+            }
+
+            // Try legs structure (might not exist)
             if (quote.IsSetField(Tags.NoLegs))
             {
                 int noLegs = quote.GetInt(Tags.NoLegs);
                 msg.Set(Tags.NoLegs.ToString(), noLegs.ToString());
-
-                Console.WriteLine($"  Parsing {noLegs} legs:");
+                Console.WriteLine($"  [DEBUG] Found {noLegs} legs in repeating group");
 
                 for (int i = 1; i <= noLegs; i++)
                 {
                     var legGroup = quote.GetGroup(i, Tags.NoLegs);
 
-                    if (legGroup.IsSetField(5844)) // LegPremPrice
+                    if (legGroup.IsSetField(5844))
                     {
                         string legPrem = legGroup.GetString(5844);
                         msg.Set($"leg{i}_5844", legPrem);
                         Console.WriteLine($"    Leg {i} Premium: {legPrem}");
                     }
 
-                    if (legGroup.IsSetField(5678)) // Volatility
+                    if (legGroup.IsSetField(5678))
                     {
                         string vol = legGroup.GetString(5678);
                         msg.Set($"leg{i}_5678", vol);
                         Console.WriteLine($"    Leg {i} Vol: {vol}");
                     }
                 }
+            }
+            else
+            {
+                Console.WriteLine($"  [DEBUG] No legs repeating group found - using direct fields");
             }
 
             return msg;
@@ -475,7 +482,10 @@ namespace FXOptionsSimulator.FIX
 
             foreach (var stream in _quotes.Values)
             {
-                result.Add(stream);
+                if (stream.GroupID == groupId)
+                {
+                    result.Add(stream);
+                }
             }
 
             return result;

@@ -194,6 +194,7 @@ namespace FXOptionsSimulator.FIX
             }
 
             string quoteReqID = $"FENICS.31491.Q{DateTime.UtcNow.Ticks}";
+            _application.RegisterQuoteRequest(quoteReqID, groupId);
 
             Console.WriteLine($"\n[FIX Manager] Building Quote Request for {lpName}");
             Console.WriteLine($"  QuoteReqID: {quoteReqID}");
