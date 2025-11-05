@@ -42,10 +42,12 @@ namespace FXOptionsSimulator.FIX
             AddField(49, _senderCompID); // SenderCompID
             AddField(52, GetUTCTimestamp()); // SendingTime
             AddField(56, _targetCompID); // TargetCompID
-            AddField(115, "SWES"); // OnBehalfOfCompID - ADD THIS LINE
+           // AddField(115, "SWES"); // OnBehalfOfCompID - COMMENTED OUT FOR TESTING
 
             // DeliverToCompID in header
             AddField(128, lpName);
+            Console.WriteLine($"[DEBUG] Tag 128 - lpName value: '{lpName}'");
+        
 
             // Body fields in EXACT GFI order
             AddField(75, DateTime.UtcNow.ToString("yyyyMMdd")); // TradeDate
