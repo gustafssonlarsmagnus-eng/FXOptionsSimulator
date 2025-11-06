@@ -10,6 +10,7 @@ namespace FXOptionsSimulator.FIX
     {
         private readonly ConcurrentDictionary<string, StreamInfo> _quotes;
         private ConcurrentDictionary<string, string> _quoteReqToGroupID = new ConcurrentDictionary<string, string>();
+        public event Action<string, string, string> OnQuoteCanceled;
 
         public class StreamInfo
         {
@@ -165,6 +166,86 @@ namespace FXOptionsSimulator.FIX
             catch (Exception ex)
             {
                 Console.WriteLine($"[GFI FIX] ERROR: {ex.Message}");
+                Console.WriteLine($"[GFI FIX] Stack: {ex.StackTrace}");
+            }
+        }
+
+        public void OnMessage(QuickFix.FIX44.QuoteCancel message, SessionID sessionID)
+        {
+            try
+            {
+                // FIXED: Get LP from HEADER, not body!
+                string lpName = "UNKNOWN";
+                try
+                {
+                    lpName = message.Header.GetString(Tags.OnBehalfOfCompID);
+                }
+                catch
+                {
+                    // Fallback if not in header
+                    if (message.IsSetField(Tags.OnBehalfOfCompID))
+                    {
+                        lpName = message.GetString(Tags.OnBehalfOfCompID);
+                    }
+                }
+
+                // Extract QuoteReqID
+                string quoteReqID = message.IsSetQuoteReqID()
+                    ? message.QuoteReqID.getValue()
+                    : "N/A";
+
+                // Extract QuoteID (tag 117)
+                string quoteID = "N/A";
+                if (message.IsSetField(Tags.QuoteID))
+                {
+                    quoteID = message.GetString(Tags.QuoteID);
+                }
+
+                // Extract cancel type
+                int cancelType = message.IsSetQuoteCancelType()
+                    ? message.QuoteCancelType.getValue()
+                    : 0;
+
+                Console.WriteLine($"[GFI FIX] <<< Quote Cancel (35=Z)");
+                Console.WriteLine($"  LP: {lpName}");
+                Console.WriteLine($"  QuoteReqID: {quoteReqID}");
+                Console.WriteLine($"  QuoteID: {quoteID}");
+                Console.WriteLine($"  CancelType: {cancelType}");
+
+                // Update your quotes dictionary to mark as canceled
+                string key = $"{quoteReqID}_{lpName}";
+
+                if (_quotes.TryGetValue(key, out var existingStream))
+                {
+                    // Determine which side is being canceled based on QuoteID pattern
+                    if (quoteID.Contains("_b") || quoteID.StartsWith("B_"))
+                    {
+                        Console.WriteLine($"  → Canceling BID quote (replacement expected)");
+                        existingStream.BidQuote = null; // Clear stale bid
+                    }
+                    else if (quoteID.Contains("_s") || quoteID.Contains("_o") || quoteID.Contains("-O") || quoteID.Contains("-T") || quoteID.StartsWith("O_"))
+                    {
+                        Console.WriteLine($"  → Canceling OFFER quote (replacement expected)");
+                        existingStream.OfferQuote = null; // Clear stale offer
+                    }
+                    else
+                    {
+                        Console.WriteLine($"  → Quote canceled (awaiting replacement)");
+                    }
+
+                    existingStream.LastUpdate = DateTime.UtcNow;
+                }
+                else
+                {
+                    Console.WriteLine($"  ⚠ Warning: No existing quote found for key '{key}'");
+                }
+
+                // Notify UI that quote was canceled
+                OnQuoteCanceled?.Invoke(quoteReqID, lpName, quoteID);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[GFI FIX] ERROR processing Quote Cancel: {ex.Message}");
                 Console.WriteLine($"[GFI FIX] Stack: {ex.StackTrace}");
             }
         }

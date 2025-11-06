@@ -1,6 +1,7 @@
-﻿using System;
-using System.Text;
+﻿using QuickFix;
+using System;
 using System.Globalization;
+using System.Text;
 
 
 namespace FXOptionsSimulator.FIX
@@ -204,6 +205,18 @@ namespace FXOptionsSimulator.FIX
             }
 
             return result;
+        }
+
+        public void OnMessage(QuickFix.FIX44.QuoteCancel message, SessionID sessionID)
+        {
+            var quoteReqID = message.IsSetQuoteReqID() ? message.QuoteReqID.getValue() : "N/A";
+            var quoteCancelType = message.IsSetQuoteCancelType() ? message.QuoteCancelType.getValue() : 0;
+
+            Console.WriteLine($"[GFI FIX] <<< Quote Cancel");
+            Console.WriteLine($"  QuoteReqID: {quoteReqID}");
+            Console.WriteLine($"  CancelType: {quoteCancelType}"); // 1=Cancel for Symbol, 4=Cancel All
+
+            // Notify UI that quote is canceled
         }
 
         private static DateTime AdjustFollowingWeekday(DateTime d)
