@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Text;
+using System.Globalization;
+
 
 namespace FXOptionsSimulator.FIX
 {
@@ -47,10 +49,13 @@ namespace FXOptionsSimulator.FIX
             // DeliverToCompID in header
             AddField(128, lpName);
             Console.WriteLine($"[DEBUG] Tag 128 - lpName value: '{lpName}'");
-        
+            // Use a single captured trade date for consistency
+            var tradeDate = DateTime.UtcNow.Date;
+
+
 
             // Body fields in EXACT GFI order
-            AddField(75, DateTime.UtcNow.ToString("yyyyMMdd")); // TradeDate
+            AddField(75, tradeDate.ToString("yyyyMMdd")); // TradeDate
             AddField(131, quoteReqID); // QuoteReqID
             AddField(5475, "S"); // PremDel
             AddField(5830, trade.PremiumCurrency); // PremiumCcy
@@ -77,22 +82,40 @@ namespace FXOptionsSimulator.FIX
                 AddField(600, trade.Underlying); // LegSymbol
                 AddField(6714, leg.OptionType == "CALL" ? "1" : "2"); // LegStrategy
                 AddField(9125, "1"); // Cutoff
-                AddField(6215, leg.Tenor); // Tenor
-                AddField(611, leg.ExpiryDate.ToString("yyyyMMdd")); // LegMaturityDate
-                AddField(743, leg.ExpiryDate.AddDays(2).ToString("yyyyMMdd")); // DeliveryDate
-                AddField(5020, DateTime.UtcNow.AddDays(2).ToString("yyyyMMdd")); // PremiumDelivery
-                AddField(612, leg.Strike.ToString("F4")); // LegStrikePrice
+                                     // GFI requires BOTH tenor AND maturity date (even though docs say "either")
+                                     // ... existing fields above ...
+                AddField(6215, leg.Tenor); // Tenor (e.g., "1M")
+
+                // Compute raw maturity (explicit date or from tenor)
+                var rawMaturity = (leg.ExpiryDate != default(DateTime))
+                    ? leg.ExpiryDate
+                    : CalculateMaturityFromTenor(leg.Tenor);
+
+                // MINIMAL FIX: adjust expiry to next weekday BEFORE tagging 611/743
+                var adjMaturity = AdjustFollowingWeekday(rawMaturity);
+                AddField(611, adjMaturity.ToString("yyyyMMdd")); // LegMaturityDate
+
+                // Delivery/settlement = T+2 business days **from adjusted maturity**
+                var settlementDate = GetNextBusinessDay(adjMaturity, 2);
+                AddField(743, settlementDate.ToString("yyyyMMdd")); // DeliveryDate
+
+                // Premium delivery: T+2 business days from today (unchanged)
+                var premiumDate = GetNextBusinessDay(tradeDate, 2);
+                AddField(5020, premiumDate.ToString("yyyyMMdd")); // PremiumDelivery
+
+                AddField(612, leg.Strike.ToString("F4", CultureInfo.InvariantCulture)); // LegStrikePrice
+                                                                                       
                 AddField(9019, "2"); // FXOptionStyle
                 AddField(6351, (i == 0 || leg.Position == "SAME") ? "1" : "2"); // Position
                 AddField(9904, "2"); // PriceIndicator
 
                 if (trade.SpotReference > 0)
-                {
-                    AddField(5235, trade.SpotReference.ToString("F4")); // LegSpotRate
-                }
+                    {
+                    AddField(5235, trade.SpotReference.ToString("F4", CultureInfo.InvariantCulture)); // LegSpotRate
+                    }
 
                 AddField(556, trade.PremiumCurrency); // LegCurrency
-                AddField(687, leg.NotionalMM.ToString()); // LegQty
+                AddField(687, leg.NotionalMM.ToString(CultureInfo.InvariantCulture)); // LegQty
                 AddField(7940, leg.LegID); // LegStrategyID
                 AddField(9034, leg.NotionalCurrency); // LegStrategyCcy
             }
@@ -164,5 +187,48 @@ namespace FXOptionsSimulator.FIX
                 _ => 1
             };
         }
+        private DateTime GetNextBusinessDay(DateTime startDate, int businessDays)
+        {
+            var result = startDate;
+            int addedDays = 0;
+
+            while (addedDays < businessDays)
+            {
+                result = result.AddDays(1);
+                // Skip weekends
+                if (result.DayOfWeek != DayOfWeek.Saturday &&
+                    result.DayOfWeek != DayOfWeek.Sunday)
+                {
+                    addedDays++;
+                }
+            }
+
+            return result;
+        }
+
+        private static DateTime AdjustFollowingWeekday(DateTime d)
+        {
+            var date = d.Date;
+            if (date.DayOfWeek == DayOfWeek.Saturday) return date.AddDays(2);
+            if (date.DayOfWeek == DayOfWeek.Sunday) return date.AddDays(1);
+            return date;
+        }
+
+        private DateTime CalculateMaturityFromTenor(string tenor)
+        {
+            var today = DateTime.UtcNow;
+
+            if (string.IsNullOrEmpty(tenor)) return today.AddMonths(1);
+
+            var number = int.Parse(tenor.TrimEnd('M', 'Y', 'W', 'D'));
+
+            if (tenor.EndsWith("M")) return today.AddMonths(number);
+            if (tenor.EndsWith("Y")) return today.AddYears(number);
+            if (tenor.EndsWith("W")) return today.AddDays(number * 7);
+            if (tenor.EndsWith("D")) return today.AddDays(number);
+
+            return today.AddMonths(1); // Default 1M
+        }
     }
+
 }
