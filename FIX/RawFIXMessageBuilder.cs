@@ -1,8 +1,9 @@
-﻿using QuickFix;
+﻿using QLNet;
+using QuickFix;
 using System;
 using System.Globalization;
 using System.Text;
-
+using static QLNet.JointCalendar;
 
 namespace FXOptionsSimulator.FIX
 {
@@ -35,7 +36,9 @@ namespace FXOptionsSimulator.FIX
             TradeStructure trade,
             string lpName,
             string quoteReqID,
-            string groupId)
+            string groupId,
+            string tag75Override = null,
+            string tag5020Override = null)
         {
             _body.Clear();
 
@@ -45,18 +48,35 @@ namespace FXOptionsSimulator.FIX
             AddField(49, _senderCompID); // SenderCompID
             AddField(52, GetUTCTimestamp()); // SendingTime
             AddField(56, _targetCompID); // TargetCompID
-           // AddField(115, "SWES"); // OnBehalfOfCompID - COMMENTED OUT FOR TESTING
+            // AddField(115, "SWES"); // OnBehalfOfCompID - COMMENTED OUT FOR TESTING
 
             // DeliverToCompID in header
             AddField(128, lpName);
             Console.WriteLine($"[DEBUG] Tag 128 - lpName value: '{lpName}'");
+
             // Use a single captured trade date for consistency
             var tradeDate = DateTime.UtcNow.Date;
 
+            // ✅ canonical override for 75 & 5020
+            var tag75 = tag75Override ?? tradeDate.ToString("yyyyMMdd");
+            var tag5020 = tag5020Override ?? GetNextBusinessDay(tradeDate, 2).ToString("yyyyMMdd");
+
+            // === QLNet policy & calendars for expiry/delivery ===
+            var pair = trade.Underlying;               // e.g. EURUSD
+            var ccy1 = pair.Substring(0, 3);
+            var ccy2 = pair.Substring(3, 3);
+            var policy = GlobalDatePolicy.Policy;
+
+            var jointCal = new JointCalendar(
+                FxCalendar(ccy1),
+                FxCalendar(ccy2),
+                JointCalendarRule.JoinHolidays);
+
+            var spotLag = policy.SpotLagForPair(pair);   // OneBD / TwoBD etc.
 
 
             // Body fields in EXACT GFI order
-            AddField(75, tradeDate.ToString("yyyyMMdd")); // TradeDate
+            AddField(75, tag75); // TradeDate  ✅ uses override if provided
             AddField(131, quoteReqID); // QuoteReqID
             AddField(5475, "S"); // PremDel
             AddField(5830, trade.PremiumCurrency); // PremiumCcy
@@ -65,7 +85,7 @@ namespace FXOptionsSimulator.FIX
             int structureCode = GetStructureCode(trade.StructureType);
             AddField(9126, structureCode.ToString()); // Structure
             AddField(9943, "2"); // ProductQuoteType
-            AddField(8051, groupId); 
+            AddField(8051, groupId);
             AddField(146, "1"); // NoRelatedSym
 
             // NoRelatedSym group - EXACT order from GFI sample
@@ -83,37 +103,77 @@ namespace FXOptionsSimulator.FIX
                 AddField(600, trade.Underlying); // LegSymbol
                 AddField(6714, leg.OptionType == "CALL" ? "1" : "2"); // LegStrategy
                 AddField(9125, "1"); // Cutoff
-                                     // GFI requires BOTH tenor AND maturity date (even though docs say "either")
-                                     // ... existing fields above ...
+                // GFI requires BOTH tenor AND maturity date (even though docs say "either")
                 AddField(6215, leg.Tenor); // Tenor (e.g., "1M")
 
-                // Compute raw maturity (explicit date or from tenor)
-                var rawMaturity = (leg.ExpiryDate != default(DateTime))
-                    ? leg.ExpiryDate
-                    : CalculateMaturityFromTenor(leg.Tenor);
+                // === QLNet-based expiry (611) and delivery (743) ===
+                DateTime expiryDt;
+                DateTime deliveryDt;
 
-                // MINIMAL FIX: adjust expiry to next weekday BEFORE tagging 611/743
-                var adjMaturity = AdjustFollowingWeekday(rawMaturity);
-                AddField(611, adjMaturity.ToString("yyyyMMdd")); // LegMaturityDate
+                if (leg.ExpiryDate != default)
+                {
+                    // explicit expiry supplied by the user
+                    var e = leg.ExpiryDate.Date;
+                    var qExp = new QLNet.Date(e.Day, (QLNet.Month)e.Month, e.Year);
 
-                // Delivery/settlement = T+2 business days **from adjusted maturity**
-                var settlementDate = GetNextBusinessDay(adjMaturity, 2);
-                AddField(743, settlementDate.ToString("yyyyMMdd")); // DeliveryDate
+                    // Adjust expiry using policy convention on joint calendar
+                    var qAdjExp = jointCal.adjust(qExp, policy.ExpiryConvention);
 
-                // Premium delivery: T+2 business days from today (unchanged)
-                var premiumDate = GetNextBusinessDay(tradeDate, 2);
-                AddField(5020, premiumDate.ToString("yyyyMMdd")); // PremiumDelivery
+                    // Compute delivery = expiry + spotLag BUSINESS days on the joint calendar
+                    var qDel = qAdjExp;
+                    int moved = 0;
+                    while (moved < (int)spotLag)
+                    {
+                        qDel = qDel + 1;
+                        if (jointCal.isBusinessDay(qDel)) moved++;
+                    }
+
+                    expiryDt = new DateTime(qAdjExp.Year, (int)qAdjExp.Month, qAdjExp.Day);
+                    deliveryDt = new DateTime(qDel.Year, (int)qDel.Month, qDel.Day);
+                }
+                else
+                {
+                    // tenor-driven dates via your FxDateService (QLNet under the hood)
+                    var nowUtc = DateTime.UtcNow;
+                    var (_, _, expiry, delivery, _) =
+                        FxDateService.ComputeDates(nowUtc, pair, leg.Tenor, trade.PremiumCurrency, new FxDateRules
+                        {
+                            Ccy1 = ccy1,
+                            Ccy2 = ccy2,
+                            SpotLag = spotLag,
+                            ExpiryConvention = policy.ExpiryConvention,
+                            ExpiryEOM = policy.ExpiryEOM,
+                            PremiumSettleDays = policy.PremiumSettleDays,
+                            PremiumCalMode = policy.PremiumCalendarMode,
+                            PremiumConvention = policy.PremiumConvention
+                        });
+
+                    expiryDt = expiry;
+                    deliveryDt = delivery;
+                }
+
+                // Tag 611/743 with policy-computed dates
+                AddField(611, expiryDt.ToString("yyyyMMdd"));   // LegMaturityDate
+                AddField(743, deliveryDt.ToString("yyyyMMdd")); // DeliveryDate
+
+
+                // ❌ old (ignored override)
+                // var premiumDate = GetNextBusinessDay(tradeDate, 2);
+                // AddField(5020, premiumDate.ToString("yyyyMMdd")); // PremiumDelivery
+
+                // ✅ use the canonical 5020 for ALL legs / ALL LPs
+                AddField(5020, tag5020); // PremiumDelivery
 
                 AddField(612, leg.Strike.ToString("F4", CultureInfo.InvariantCulture)); // LegStrikePrice
-                                                                                       
+
                 AddField(9019, "2"); // FXOptionStyle
                 AddField(6351, (i == 0 || leg.Position == "SAME") ? "1" : "2"); // Position
                 AddField(9904, "2"); // PriceIndicator
 
                 if (trade.SpotReference > 0)
-                    {
+                {
                     AddField(5235, trade.SpotReference.ToString("F4", CultureInfo.InvariantCulture)); // LegSpotRate
-                    }
+                }
 
                 AddField(556, trade.PremiumCurrency); // LegCurrency
                 AddField(687, leg.NotionalMM.ToString(CultureInfo.InvariantCulture)); // LegQty
@@ -188,6 +248,24 @@ namespace FXOptionsSimulator.FIX
                 _ => 1
             };
         }
+
+        private static QLNet.Calendar FxCalendar(string ccy) => (ccy ?? "").ToUpperInvariant() switch
+        {
+            "USD" => new UnitedStates(UnitedStates.Market.Settlement),
+            "EUR" => new TARGET(),
+            "GBP" => new UnitedKingdom(UnitedKingdom.Market.Settlement),
+            "JPY" => new Japan(),
+            "CHF" => new Switzerland(),
+            "CAD" => new Canada(),
+            "AUD" => new Australia(),
+            "NZD" => new NewZealand(),
+            "SEK" => new Sweden(),
+            "NOK" => new Norway(),
+            "DKK" => new Denmark(),
+            _ => new TARGET() // safe default
+        };
+
+
         private DateTime GetNextBusinessDay(DateTime startDate, int businessDays)
         {
             var result = startDate;
@@ -243,5 +321,4 @@ namespace FXOptionsSimulator.FIX
             return today.AddMonths(1); // Default 1M
         }
     }
-
 }

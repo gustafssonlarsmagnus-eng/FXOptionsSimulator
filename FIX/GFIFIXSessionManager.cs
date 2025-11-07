@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using QLNet;  // <-- QLNet for date policy/rules
 
 namespace FXOptionsSimulator.FIX
 {
@@ -15,7 +16,7 @@ namespace FXOptionsSimulator.FIX
         private readonly SessionSettings _settings;
         private readonly GFIFIXApplication _application;
         private SessionID _sessionID;
-        private RawFIXMessageBuilder _rawBuilder;  // NEW
+        private RawFIXMessageBuilder _rawBuilder;
 
         public GFIFIXApplication Application => _application;
         public bool IsLoggedOn => _application.IsLoggedOn;
@@ -23,11 +24,12 @@ namespace FXOptionsSimulator.FIX
         public GFIFIXSessionManager(string configFile = "quickfix.cfg")
         {
             Console.WriteLine($"[FIX Manager] Initializing with config: {configFile}");
-            Console.WriteLine($"[FIX Manager] Config file path: {Path.GetFullPath(configFile)}");
+            Console.WriteLine($"[FIX Manager] Config file path: {System.IO.Path.GetFullPath(configFile)}");
+
             Console.WriteLine($"[FIX Manager] Config exists: {File.Exists(configFile)}");
 
             _application = new GFIFIXApplication();
-            _rawBuilder = new RawFIXMessageBuilder("FIX.4.4", "WEBFENICS55", "GFI");  // NEW
+            _rawBuilder = new RawFIXMessageBuilder("FIX.4.4", "WEBFENICS55", "GFI");
 
             try
             {
@@ -35,7 +37,6 @@ namespace FXOptionsSimulator.FIX
                 _settings = new SessionSettings(configFile);
                 Console.WriteLine("[FIX Manager] SessionSettings loaded successfully");
 
-                // Print all settings to see what's being parsed
                 Console.WriteLine("\n[FIX Manager] === Config Contents ===");
                 var sessions = _settings.GetSessions();
 
@@ -46,7 +47,6 @@ namespace FXOptionsSimulator.FIX
                     Console.WriteLine($"[FIX Manager] Session: {sessionID}");
                     var dict = _settings.Get(sessionID);
 
-                    // Try to read common settings
                     string[] commonKeys = {
                         "BeginString", "SenderCompID", "TargetCompID",
                         "SocketConnectHost", "SocketConnectPort", "HeartBtInt",
@@ -189,9 +189,7 @@ namespace FXOptionsSimulator.FIX
         public string SendQuoteRequest(TradeStructure trade, string lpName, string groupId)
         {
             if (!IsLoggedOn)
-            {
                 throw new InvalidOperationException("Cannot send quote request - not logged on!");
-            }
 
             string quoteReqID = $"FENICS.31491.Q{DateTime.UtcNow.Ticks}";
             _application.RegisterQuoteRequest(quoteReqID, groupId);
@@ -204,19 +202,50 @@ namespace FXOptionsSimulator.FIX
 
             try
             {
-                // Get current sequence number and increment for next message
+                // ===== Canonical single-policy dates (identical for all LPs) =====
+                var pair = trade.Underlying;            // e.g., "EURUSD"
+                var premiumCcy = trade.PremiumCurrency; // e.g., "USD"
+                var P = GlobalDatePolicy.Policy;
+
+                var rules = new FxDateRules
+                {
+                    Ccy1 = pair.Substring(0, 3),
+                    Ccy2 = pair.Substring(3, 3),
+                    SpotLag = P.SpotLagForPair(pair),
+                    ExpiryConvention = P.ExpiryConvention,
+                    ExpiryEOM = P.ExpiryEOM,
+                    PremiumSettleDays = P.PremiumSettleDays,
+                    PremiumCalMode = P.PremiumCalendarMode,
+                    PremiumConvention = P.PremiumConvention
+                };
+
+                var nowUtc = DateTime.UtcNow;
+                // Compute business-day-safe trade date and premium date
+                var (tradeDt, _, _, _, premiumDt) =
+                    FxDateService.ComputeDates(nowUtc, pair, "0D", premiumCcy, rules);
+
+                var canonical75 = FxDateService.Ymd(tradeDt);
+                var canonical5020 = FxDateService.Ymd(premiumDt);
+
+                Console.WriteLine($"[Dates] Policy: premium={P.PremiumCalendarMode}, conv={P.PremiumConvention}, spotLag={rules.SpotLag}");
+                Console.WriteLine($"[Dates] 75={canonical75} 5020={canonical5020}");
+
+                // ===== Get current sequence number and increment for next message =====
                 var session = Session.LookupSession(_sessionID);
                 int seqNum = session.NextSenderMsgSeqNum;
                 _rawBuilder.SetMsgSeqNum(seqNum);
 
-                // Build raw message with exact field order
-                string rawMessage = _rawBuilder.BuildQuoteRequest(trade, lpName, quoteReqID, groupId);
+                // ===== Build raw message with exact field order, passing canonical overrides =====
+                string rawMessage = _rawBuilder.BuildQuoteRequest(
+                    trade, lpName, quoteReqID, groupId,
+                    tag75Override: canonical75,
+                    tag5020Override: canonical5020);
 
                 Console.WriteLine($"\n[DEBUG] Raw Quote Request Message (SeqNum={seqNum}):");
                 Console.WriteLine($"{rawMessage.Replace("\x01", "|")}");
                 Console.WriteLine($"[DEBUG] End of message\n");
 
-                // Send raw message
+                // ===== Send raw message =====
                 bool sent = session.Send(rawMessage);
 
                 if (sent)
@@ -246,18 +275,15 @@ namespace FXOptionsSimulator.FIX
             }
         }
 
-        private int GetStructureCode(string structureType)
+        private int GetStructureCode(string structureType) => structureType switch
         {
-            return structureType switch
-            {
-                "Vanilla" => 1,
-                "CallSpread" => 8,
-                "PutSpread" => 9,
-                "RiskReversal" => 5,
-                "Seagull" => 10,
-                _ => 1
-            };
-        }
+            "Vanilla" => 1,
+            "CallSpread" => 8,
+            "PutSpread" => 9,
+            "RiskReversal" => 5,
+            "Seagull" => 10,
+            _ => 1
+        };
 
         #endregion
 
@@ -266,9 +292,7 @@ namespace FXOptionsSimulator.FIX
         public void SendExecution(FIXMessage quote, string side)
         {
             if (!IsLoggedOn)
-            {
                 throw new InvalidOperationException("Cannot execute - not logged on!");
-            }
 
             string quoteID = quote.Get(Tags.QuoteID.ToString());
             string quoteReqID = quote.Get(Tags.QuoteReqID.ToString());
