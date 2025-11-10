@@ -289,18 +289,20 @@ namespace FXOptionsSimulator.FIX
 
         #region Send Execution (35=AB)
 
-        public void SendExecution(FIXMessage quote, string side)
+        public string SendExecution(FIXMessage quote, string side, TradeStructure trade = null)
         {
             if (!IsLoggedOn)
                 throw new InvalidOperationException("Cannot execute - not logged on!");
 
             string quoteID = quote.Get(Tags.QuoteID.ToString());
             string quoteReqID = quote.Get(Tags.QuoteReqID.ToString());
+            string lpName = quote.Get(Tags.OnBehalfOfCompID.ToString());
             string clOrdID = $"ORD{DateTime.UtcNow.Ticks}";
 
             Console.WriteLine($"\n[FIX Manager] Executing trade");
             Console.WriteLine($"  ClOrdID: {clOrdID}");
             Console.WriteLine($"  QuoteID: {quoteID}");
+            Console.WriteLine($"  LP: {lpName}");
             Console.WriteLine($"  Side: {side}");
 
             try
@@ -316,6 +318,26 @@ namespace FXOptionsSimulator.FIX
                 Session.SendToTarget(msg, _sessionID);
 
                 Console.WriteLine($"[FIX Manager] ✓ Execution sent");
+
+                // Add to blotter
+                if (trade != null)
+                {
+                    var blotterEntry = new TradeBlotterEntry
+                    {
+                        TradeTime = DateTime.Now,
+                        ClOrdID = clOrdID,
+                        LP = lpName,
+                        Side = side,
+                        Underlying = trade.Underlying,
+                        StructureType = trade.StructureType,
+                        LegCount = trade.Legs.Count,
+                        NetPremium = 0, // Will be set from quote
+                        Status = "PENDING"
+                    };
+                    TradeBlotter.Instance.AddTrade(blotterEntry);
+                }
+
+                return clOrdID;
             }
             catch (Exception ex)
             {

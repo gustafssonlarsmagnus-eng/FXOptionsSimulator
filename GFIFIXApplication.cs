@@ -25,6 +25,7 @@ namespace FXOptionsSimulator.FIX
         public event Action<string> OnLogonEvent;
         public event Action<string> OnLogoutEvent;
         public event Action<string, FIXMessage> OnQuoteReceived;
+        public event Action<string, string, string> OnExecutionReport; // ClOrdID, Status, ExecID
 
         public bool IsLoggedOn { get; private set; }
 
@@ -334,25 +335,38 @@ namespace FXOptionsSimulator.FIX
         {
             string clOrdID = execReport.GetString(Tags.ClOrdID);
             string ordStatus = execReport.GetString(Tags.OrdStatus);
+            string execID = execReport.IsSetField(Tags.ExecID) ? execReport.GetString(Tags.ExecID) : "N/A";
 
             Console.WriteLine($"\n[GFI FIX] <<< Execution Report (35=8)");
             Console.WriteLine($"  ClOrdID: {clOrdID}");
+            Console.WriteLine($"  ExecID: {execID}");
             Console.WriteLine($"  Status: {ordStatus}");
+
+            string statusText = "PENDING";
+            string rejectReason = null;
 
             if (ordStatus == "2")
             {
                 Console.WriteLine("  ✓ FILLED!");
+                statusText = "FILLED";
             }
             else if (ordStatus == "8")
             {
                 Console.WriteLine("  ✗ REJECTED");
+                statusText = "REJECTED";
 
                 if (execReport.IsSetField(58))
                 {
-                    string text = execReport.GetString(58);
-                    Console.WriteLine($"  Reason: {text}");
+                    rejectReason = execReport.GetString(58);
+                    Console.WriteLine($"  Reason: {rejectReason}");
                 }
             }
+
+            // Update blotter
+            TradeBlotter.Instance.UpdateTradeStatus(clOrdID, statusText, execID, null, rejectReason);
+
+            // Notify listeners
+            OnExecutionReport?.Invoke(clOrdID, statusText, execID);
         }
 
         public void OnMessage(QuickFix.FIX44.BusinessMessageReject reject, SessionID sessionID)
