@@ -307,61 +307,48 @@ namespace FXOptionsSimulator.FIX
 
             try
             {
-                var msg = new QuickFix.FIX44.NewOrderMultileg();
-
-                msg.ClOrdID = new ClOrdID(clOrdID);
-                msg.SetField(new QuoteID(quoteID));
-                msg.Side = new Side(side == "SELL" ? Side.SELL : Side.BUY);
-                msg.SetField(new TransactTime(DateTime.UtcNow));
-                msg.OrdType = new OrdType(OrdType.PREVIOUSLY_QUOTED);
-
-                // Add required fields for GFI
-                if (trade != null && quote.LegPricing != null && quote.LegPricing.Count > 0)
+                // Use raw message builder for proper field ordering
+                // QuickFix sorts fields by tag number, but GFI requires specific order
+                if (trade == null || quote.LegPricing == null || quote.LegPricing.Count == 0)
                 {
-                    Console.WriteLine($"  [DEBUG] Adding Symbol: {trade.Underlying}");
-                    msg.SetField(new Symbol(trade.Underlying)); // Tag 55 - Symbol
-                    int structureCode = GetStructureCode(trade.StructureType);
-                    msg.SetField(new IntField(9126, structureCode)); // Tag 9126 - Structure
+                    Console.WriteLine($"  [WARNING] Trade is NULL or no leg pricing available!");
+                    throw new InvalidOperationException("Cannot execute - missing trade or leg pricing information");
+                }
 
-                    // Add NoLegs and leg groups with pricing information from quote
-                    // Based on GFI spec: each leg needs LegSymbol (600), LegStrategyID (7940),
-                    // Volatility (5678), MQSize (5359), and LegPremPrice (5844)
-                    msg.SetField(new NoLegs(quote.LegPricing.Count)); // Tag 555
+                Console.WriteLine($"  [DEBUG] Building execution with {quote.LegPricing.Count} legs");
+                int structureCode = GetStructureCode(trade.StructureType);
 
-                    for (int i = 0; i < quote.LegPricing.Count; i++)
-                    {
-                        var legPricing = quote.LegPricing[i];
-                        var legGroup = new QuickFix.FIX44.NewOrderMultileg.NoLegsGroup();
+                // Get current sequence number and increment for next message
+                var session = Session.LookupSession(_sessionID);
+                int seqNum = session.NextSenderMsgSeqNum;
+                _rawBuilder.SetMsgSeqNum(seqNum);
 
-                        // Add leg fields from quote pricing
-                        legGroup.SetField(new LegSymbol(legPricing.LegSymbol ?? trade.Underlying)); // Tag 600
+                // Build raw message with exact field order
+                string rawMessage = _rawBuilder.BuildNewOrderMultileg(
+                    clOrdID,
+                    quoteID,
+                    side,
+                    trade.Underlying,
+                    structureCode,
+                    quote);
 
-                        if (!string.IsNullOrEmpty(legPricing.LegStrategyID))
-                            legGroup.SetField(new StringField(7940, legPricing.LegStrategyID)); // Tag 7940 - LegStrategyID
+                Console.WriteLine($"\n[DEBUG] Raw Execution Message (SeqNum={seqNum}):");
+                Console.WriteLine($"{rawMessage.Replace("\x01", "|")}");
+                Console.WriteLine($"[DEBUG] End of message\n");
 
-                        if (!string.IsNullOrEmpty(legPricing.Volatility))
-                            legGroup.SetField(new StringField(5678, legPricing.Volatility)); // Tag 5678 - Volatility
+                // Send raw message
+                bool sent = session.Send(rawMessage);
 
-                        if (!string.IsNullOrEmpty(legPricing.MQSize))
-                            legGroup.SetField(new StringField(5359, legPricing.MQSize)); // Tag 5359 - MQSize
-
-                        if (!string.IsNullOrEmpty(legPricing.LegPremPrice))
-                            legGroup.SetField(new StringField(5844, legPricing.LegPremPrice)); // Tag 5844 - LegPremPrice
-
-                        msg.AddGroup(legGroup);
-                        Console.WriteLine($"  [DEBUG] Added Leg {i+1}: StrategyID={legPricing.LegStrategyID}, Vol={legPricing.Volatility}, Size={legPricing.MQSize}, Premium={legPricing.LegPremPrice}");
-                    }
-
-                    Console.WriteLine($"  [DEBUG] Added Structure Code: {structureCode}");
+                if (sent)
+                {
+                    // Manually increment the sequence number since we sent raw
+                    session.NextSenderMsgSeqNum = seqNum + 1;
+                    Console.WriteLine($"[FIX Manager] ✓ Execution sent (SeqNum={seqNum})");
                 }
                 else
                 {
-                    Console.WriteLine($"  [WARNING] Trade is NULL or no leg pricing available!");
+                    Console.WriteLine($"[FIX Manager] ✗ Failed to send message");
                 }
-
-                Session.SendToTarget(msg, _sessionID);
-
-                Console.WriteLine($"[FIX Manager] ✓ Execution sent");
 
                 // Add to blotter
                 if (trade != null)
