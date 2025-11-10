@@ -6,8 +6,8 @@ public sealed record DatePolicy
     public BusinessDayConvention ExpiryConvention { get; init; } = BusinessDayConvention.ModifiedFollowing;
     public bool ExpiryEOM { get; init; } = true;
 
-    // Premium
-    public CalendarMode PremiumCalendarMode { get; init; } = CalendarMode.JointPairCurrencies;
+    // Premium - Use premium currency calendar only (not joint) for settlement
+    public CalendarMode PremiumCalendarMode { get; init; } = CalendarMode.PremiumCcyOnly;
     public BusinessDayConvention PremiumConvention { get; init; } = BusinessDayConvention.Following;
     public int PremiumSettleDays { get; init; } = 2;
 
@@ -29,7 +29,7 @@ public static class GlobalDatePolicy
     {
         ExpiryConvention = BusinessDayConvention.ModifiedFollowing,
         ExpiryEOM = true,
-        PremiumCalendarMode = CalendarMode.JointPairCurrencies,
+        PremiumCalendarMode = CalendarMode.PremiumCcyOnly,
         PremiumConvention = BusinessDayConvention.Following,
         PremiumSettleDays = 2
     };
