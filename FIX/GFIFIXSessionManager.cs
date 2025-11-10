@@ -316,19 +316,47 @@ namespace FXOptionsSimulator.FIX
                 msg.OrdType = new OrdType(OrdType.PREVIOUSLY_QUOTED);
 
                 // Add required fields for GFI
-                // Note: For PREVIOUSLY_QUOTED orders, leg details are in the quote (QuoteID reference)
-                // so we don't need NoLegs repeating group - just Symbol and Structure
-                if (trade != null)
+                if (trade != null && quote.LegPricing != null && quote.LegPricing.Count > 0)
                 {
                     Console.WriteLine($"  [DEBUG] Adding Symbol: {trade.Underlying}");
                     msg.SetField(new Symbol(trade.Underlying)); // Tag 55 - Symbol
                     int structureCode = GetStructureCode(trade.StructureType);
                     msg.SetField(new IntField(9126, structureCode)); // Tag 9126 - Structure
+
+                    // Add NoLegs and leg groups with pricing information from quote
+                    // Based on GFI spec: each leg needs LegSymbol (600), LegStrategyID (7940),
+                    // Volatility (5678), MQSize (5359), and LegPremPrice (5844)
+                    msg.SetField(new NoLegs(quote.LegPricing.Count)); // Tag 555
+
+                    for (int i = 0; i < quote.LegPricing.Count; i++)
+                    {
+                        var legPricing = quote.LegPricing[i];
+                        var legGroup = new QuickFix.FIX44.NewOrderMultileg.NoLegsGroup();
+
+                        // Add leg fields from quote pricing
+                        legGroup.SetField(new LegSymbol(legPricing.LegSymbol ?? trade.Underlying)); // Tag 600
+
+                        if (!string.IsNullOrEmpty(legPricing.LegStrategyID))
+                            legGroup.SetField(new StringField(7940, legPricing.LegStrategyID)); // Tag 7940 - LegStrategyID
+
+                        if (!string.IsNullOrEmpty(legPricing.Volatility))
+                            legGroup.SetField(new StringField(5678, legPricing.Volatility)); // Tag 5678 - Volatility
+
+                        if (!string.IsNullOrEmpty(legPricing.MQSize))
+                            legGroup.SetField(new StringField(5359, legPricing.MQSize)); // Tag 5359 - MQSize
+
+                        if (!string.IsNullOrEmpty(legPricing.LegPremPrice))
+                            legGroup.SetField(new StringField(5844, legPricing.LegPremPrice)); // Tag 5844 - LegPremPrice
+
+                        msg.AddGroup(legGroup);
+                        Console.WriteLine($"  [DEBUG] Added Leg {i+1}: StrategyID={legPricing.LegStrategyID}, Vol={legPricing.Volatility}, Size={legPricing.MQSize}, Premium={legPricing.LegPremPrice}");
+                    }
+
                     Console.WriteLine($"  [DEBUG] Added Structure Code: {structureCode}");
                 }
                 else
                 {
-                    Console.WriteLine($"  [WARNING] Trade is NULL - cannot add Symbol/Structure!");
+                    Console.WriteLine($"  [WARNING] Trade is NULL or no leg pricing available!");
                 }
 
                 Session.SendToTarget(msg, _sessionID);
