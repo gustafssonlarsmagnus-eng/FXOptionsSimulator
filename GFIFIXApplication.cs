@@ -520,71 +520,84 @@ namespace FXOptionsSimulator.FIX
             msg.Set(Tags.Side.ToString(), quote.GetString(Tags.Side));
             msg.Set(Tags.Symbol.ToString(), quote.GetString(Tags.Symbol));
 
-            // Parse NoMQEntries (6120) - GFI's leg pricing repeating groups
-            Console.WriteLine($"  [DEBUG] Checking for NoMQEntries (6120) leg pricing...");
+            // For debugging - print the full raw message
+            Console.WriteLine($"  [DEBUG] Raw quote message:");
+            Console.WriteLine($"  {quote.ToString().Replace("\x01", "|")}");
 
-            if (quote.IsSetField(6120)) // NoMQEntries
+            // Parse leg pricing - GFI may put these fields directly on the message body
+            // or in NoMQEntries (6120) repeating groups
+            Console.WriteLine($"  [DEBUG] Checking for leg pricing fields...");
+
+            // Check if we have NoMQEntries count
+            int noMQEntries = 1; // Default to 1 leg
+            if (quote.IsSetField(6120))
             {
-                int noMQEntries = quote.GetInt(6120);
-                Console.WriteLine($"  [DEBUG] Found {noMQEntries} MQ entries (legs)");
+                noMQEntries = quote.GetInt(6120);
+                Console.WriteLine($"  [DEBUG] NoMQEntries (6120) = {noMQEntries}");
+            }
 
-                for (int i = 1; i <= noMQEntries; i++)
-                {
-                    try
-                    {
-                        var mqGroup = quote.GetGroup(i, 6120);
-                        var legPricing = new LegPricingInfo();
+            // For now, try to extract fields from the message body directly
+            // This works for vanilla options and we can expand for multi-leg later
+            var legPricing = new LegPricingInfo();
 
-                        // Extract leg pricing fields
-                        if (mqGroup.IsSetField(7940)) // LegStrategyID
-                            legPricing.LegStrategyID = mqGroup.GetString(7940);
-
-                        if (mqGroup.IsSetField(5678)) // Volatility
-                            legPricing.Volatility = mqGroup.GetString(5678);
-
-                        if (mqGroup.IsSetField(5359)) // MQSize
-                            legPricing.MQSize = mqGroup.GetString(5359);
-
-                        if (mqGroup.IsSetField(5844)) // LegPremPrice
-                            legPricing.LegPremPrice = mqGroup.GetString(5844);
-
-                        if (mqGroup.IsSetField(5235)) // LegSpotRate
-                            legPricing.LegSpotRate = mqGroup.GetString(5235);
-
-                        // LegSymbol (600) - usually same as main symbol
-                        if (mqGroup.IsSetField(600))
-                            legPricing.LegSymbol = mqGroup.GetString(600);
-                        else
-                            legPricing.LegSymbol = quote.GetString(Tags.Symbol); // Default to main symbol
-
-                        msg.LegPricing.Add(legPricing);
-
-                        Console.WriteLine($"    Leg {i}: StrategyID={legPricing.LegStrategyID}, Vol={legPricing.Volatility}, Size={legPricing.MQSize}, Premium={legPricing.LegPremPrice}");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"    [WARNING] Error parsing MQ entry {i}: {ex.Message}");
-                    }
-                }
+            // Try to get leg pricing fields from message body
+            if (quote.IsSetField(7940)) // LegStrategyID
+            {
+                legPricing.LegStrategyID = quote.GetString(7940);
+                Console.WriteLine($"  [DEBUG] LegStrategyID (7940): {legPricing.LegStrategyID}");
             }
             else
             {
-                Console.WriteLine($"  [DEBUG] No NoMQEntries found - may be vanilla option with direct fields");
+                legPricing.LegStrategyID = "SL0"; // Default
+            }
 
-                // Fallback for vanilla options - create single leg entry
-                if (quote.IsSetField(5678) || quote.IsSetField(5844))
-                {
-                    var legPricing = new LegPricingInfo
-                    {
-                        LegStrategyID = "SL0", // Default
-                        Volatility = quote.IsSetField(5678) ? quote.GetString(5678) : null,
-                        MQSize = "1", // Default
-                        LegPremPrice = quote.IsSetField(5844) ? quote.GetString(5844) : null,
-                        LegSymbol = quote.GetString(Tags.Symbol)
-                    };
-                    msg.LegPricing.Add(legPricing);
-                    Console.WriteLine($"  [DEBUG] Created single leg from direct fields: Vol={legPricing.Volatility}, Premium={legPricing.LegPremPrice}");
-                }
+            if (quote.IsSetField(5678)) // Volatility
+            {
+                legPricing.Volatility = quote.GetString(5678);
+                Console.WriteLine($"  [DEBUG] Volatility (5678): {legPricing.Volatility}");
+            }
+
+            if (quote.IsSetField(5359)) // MQSize
+            {
+                legPricing.MQSize = quote.GetString(5359);
+                Console.WriteLine($"  [DEBUG] MQSize (5359): {legPricing.MQSize}");
+            }
+            else
+            {
+                legPricing.MQSize = "1"; // Default
+            }
+
+            if (quote.IsSetField(5844)) // LegPremPrice
+            {
+                legPricing.LegPremPrice = quote.GetString(5844);
+                Console.WriteLine($"  [DEBUG] LegPremPrice (5844): {legPricing.LegPremPrice}");
+            }
+
+            if (quote.IsSetField(5235)) // LegSpotRate
+            {
+                legPricing.LegSpotRate = quote.GetString(5235);
+                Console.WriteLine($"  [DEBUG] LegSpotRate (5235): {legPricing.LegSpotRate}");
+            }
+
+            // LegSymbol (600)
+            if (quote.IsSetField(600))
+            {
+                legPricing.LegSymbol = quote.GetString(600);
+            }
+            else
+            {
+                legPricing.LegSymbol = quote.GetString(Tags.Symbol); // Default to main symbol
+            }
+
+            // Add the leg pricing if we found any data
+            if (!string.IsNullOrEmpty(legPricing.Volatility) || !string.IsNullOrEmpty(legPricing.LegPremPrice))
+            {
+                msg.LegPricing.Add(legPricing);
+                Console.WriteLine($"  [DEBUG] Added leg pricing: StrategyID={legPricing.LegStrategyID}, Vol={legPricing.Volatility}, Size={legPricing.MQSize}, Premium={legPricing.LegPremPrice}");
+            }
+            else
+            {
+                Console.WriteLine($"  [WARNING] No leg pricing fields found in quote!");
             }
 
             return msg;
