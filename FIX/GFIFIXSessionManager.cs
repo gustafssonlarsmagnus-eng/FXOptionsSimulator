@@ -323,8 +323,23 @@ namespace FXOptionsSimulator.FIX
                     int structureCode = GetStructureCode(trade.StructureType);
                     msg.SetField(new IntField(9126, structureCode)); // Tag 9126 - Structure
 
-                    // Add NoLegs (tag 555)
+                    // Add NoLegs (tag 555) and leg details
                     msg.SetField(new NoLegs(trade.Legs.Count)); // Tag 555 - Number of legs
+
+                    for (int i = 0; i < trade.Legs.Count; i++)
+                    {
+                        var leg = trade.Legs[i];
+                        var legGroup = new QuickFix.FIX44.NewOrderMultileg.NoLegsGroup();
+
+                        legGroup.SetField(new LegSymbol(trade.Underlying)); // Tag 600
+                        legGroup.SetField(new LegSide(leg.Direction == "BUY" ? '1' : '2')); // Tag 624
+                        legGroup.SetField(new IntField(612, (int)(leg.Strike * 10000))); // Tag 612 - LegStrikePrice
+                        legGroup.SetField(new IntField(6714, leg.OptionType == "CALL" ? 1 : 2)); // Tag 6714 - LegStrategy
+
+                        msg.AddGroup(legGroup);
+                        Console.WriteLine($"  [DEBUG] Added Leg {i+1}: {leg.Direction} {leg.OptionType} @ {leg.Strike}");
+                    }
+
                     Console.WriteLine($"  [DEBUG] Added NoLegs: {trade.Legs.Count}");
                     Console.WriteLine($"  [DEBUG] Added Structure Code: {structureCode}");
                 }
