@@ -316,29 +316,14 @@ namespace FXOptionsSimulator.FIX
                 msg.OrdType = new OrdType(OrdType.PREVIOUSLY_QUOTED);
 
                 // Add required fields for GFI
+                // Note: For PREVIOUSLY_QUOTED orders, leg details are in the quote (QuoteID reference)
+                // so we don't need NoLegs repeating group - just Symbol and Structure
                 if (trade != null)
                 {
                     Console.WriteLine($"  [DEBUG] Adding Symbol: {trade.Underlying}");
                     msg.SetField(new Symbol(trade.Underlying)); // Tag 55 - Symbol
                     int structureCode = GetStructureCode(trade.StructureType);
                     msg.SetField(new IntField(9126, structureCode)); // Tag 9126 - Structure
-
-                    // Add NoLegs (tag 555) and leg details
-                    msg.SetField(new NoLegs(trade.Legs.Count)); // Tag 555 - Number of legs
-
-                    for (int i = 0; i < trade.Legs.Count; i++)
-                    {
-                        var leg = trade.Legs[i];
-                        var legGroup = new QuickFix.FIX44.NewOrderMultileg.NoLegsGroup();
-
-                        legGroup.SetField(new LegSymbol(trade.Underlying)); // Tag 600
-                        legGroup.SetField(new LegSide(leg.Direction == "BUY" ? '1' : '2')); // Tag 624
-
-                        msg.AddGroup(legGroup);
-                        Console.WriteLine($"  [DEBUG] Added Leg {i+1}: {leg.Direction} {trade.Underlying}");
-                    }
-
-                    Console.WriteLine($"  [DEBUG] Added NoLegs: {trade.Legs.Count}");
                     Console.WriteLine($"  [DEBUG] Added Structure Code: {structureCode}");
                 }
                 else
