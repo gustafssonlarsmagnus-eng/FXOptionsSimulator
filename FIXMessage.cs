@@ -6,12 +6,26 @@ using System.Text;
 namespace FXOptionsSimulator
 {
     /// <summary>
+    /// Leg pricing information from Quote Response (NoMQEntries)
+    /// </summary>
+    public class LegPricingInfo
+    {
+        public string LegStrategyID { get; set; }      // Tag 7940
+        public string Volatility { get; set; }          // Tag 5678
+        public string MQSize { get; set; }              // Tag 5359
+        public string LegPremPrice { get; set; }        // Tag 5844
+        public string LegSpotRate { get; set; }         // Tag 5235
+        public string LegSymbol { get; set; }           // Tag 600 (usually same as main symbol)
+    }
+
+    /// <summary>
     /// Simple FIX message representation for simulator
     /// </summary>
     public class FIXMessage
     {
         public Dictionary<string, string> Fields { get; set; }
         public DateTime Timestamp { get; set; }
+        public List<LegPricingInfo> LegPricing { get; set; }
 
         public FIXMessage(string msgType)
         {
@@ -20,6 +34,7 @@ namespace FXOptionsSimulator
                 ["35"] = msgType
             };
             Timestamp = DateTime.UtcNow;
+            LegPricing = new List<LegPricingInfo>();
         }
 
         public FIXMessage Set(string tag, string value)

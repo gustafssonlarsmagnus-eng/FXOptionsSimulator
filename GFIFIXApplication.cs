@@ -520,52 +520,71 @@ namespace FXOptionsSimulator.FIX
             msg.Set(Tags.Side.ToString(), quote.GetString(Tags.Side));
             msg.Set(Tags.Symbol.ToString(), quote.GetString(Tags.Symbol));
 
-            // DIRECT PREMIUM AND VOLATILITY (not in legs for GFI)
-            Console.WriteLine($"  [DEBUG] Checking for direct premium/vol fields...");
+            // Parse NoMQEntries (6120) - GFI's leg pricing repeating groups
+            Console.WriteLine($"  [DEBUG] Checking for NoMQEntries (6120) leg pricing...");
 
-            if (quote.IsSetField(5678)) // Volatility
+            if (quote.IsSetField(6120)) // NoMQEntries
             {
-                string vol = quote.GetString(5678);
-                msg.Set("leg1_5678", vol);
-                Console.WriteLine($"  [DEBUG] Direct Vol (5678): {vol}");
-            }
+                int noMQEntries = quote.GetInt(6120);
+                Console.WriteLine($"  [DEBUG] Found {noMQEntries} MQ entries (legs)");
 
-            if (quote.IsSetField(5844)) // Premium
-            {
-                string prem = quote.GetString(5844);
-                msg.Set("leg1_5844", prem);
-                Console.WriteLine($"  [DEBUG] Direct Premium (5844): {prem}");
-            }
-
-            // Try legs structure (might not exist)
-            if (quote.IsSetField(Tags.NoLegs))
-            {
-                int noLegs = quote.GetInt(Tags.NoLegs);
-                msg.Set(Tags.NoLegs.ToString(), noLegs.ToString());
-                Console.WriteLine($"  [DEBUG] Found {noLegs} legs in repeating group");
-
-                for (int i = 1; i <= noLegs; i++)
+                for (int i = 1; i <= noMQEntries; i++)
                 {
-                    var legGroup = quote.GetGroup(i, Tags.NoLegs);
-
-                    if (legGroup.IsSetField(5844))
+                    try
                     {
-                        string legPrem = legGroup.GetString(5844);
-                        msg.Set($"leg{i}_5844", legPrem);
-                        Console.WriteLine($"    Leg {i} Premium: {legPrem}");
+                        var mqGroup = quote.GetGroup(i, 6120);
+                        var legPricing = new LegPricingInfo();
+
+                        // Extract leg pricing fields
+                        if (mqGroup.IsSetField(7940)) // LegStrategyID
+                            legPricing.LegStrategyID = mqGroup.GetString(7940);
+
+                        if (mqGroup.IsSetField(5678)) // Volatility
+                            legPricing.Volatility = mqGroup.GetString(5678);
+
+                        if (mqGroup.IsSetField(5359)) // MQSize
+                            legPricing.MQSize = mqGroup.GetString(5359);
+
+                        if (mqGroup.IsSetField(5844)) // LegPremPrice
+                            legPricing.LegPremPrice = mqGroup.GetString(5844);
+
+                        if (mqGroup.IsSetField(5235)) // LegSpotRate
+                            legPricing.LegSpotRate = mqGroup.GetString(5235);
+
+                        // LegSymbol (600) - usually same as main symbol
+                        if (mqGroup.IsSetField(600))
+                            legPricing.LegSymbol = mqGroup.GetString(600);
+                        else
+                            legPricing.LegSymbol = quote.GetString(Tags.Symbol); // Default to main symbol
+
+                        msg.LegPricing.Add(legPricing);
+
+                        Console.WriteLine($"    Leg {i}: StrategyID={legPricing.LegStrategyID}, Vol={legPricing.Volatility}, Size={legPricing.MQSize}, Premium={legPricing.LegPremPrice}");
                     }
-
-                    if (legGroup.IsSetField(5678))
+                    catch (Exception ex)
                     {
-                        string vol = legGroup.GetString(5678);
-                        msg.Set($"leg{i}_5678", vol);
-                        Console.WriteLine($"    Leg {i} Vol: {vol}");
+                        Console.WriteLine($"    [WARNING] Error parsing MQ entry {i}: {ex.Message}");
                     }
                 }
             }
             else
             {
-                Console.WriteLine($"  [DEBUG] No legs repeating group found - using direct fields");
+                Console.WriteLine($"  [DEBUG] No NoMQEntries found - may be vanilla option with direct fields");
+
+                // Fallback for vanilla options - create single leg entry
+                if (quote.IsSetField(5678) || quote.IsSetField(5844))
+                {
+                    var legPricing = new LegPricingInfo
+                    {
+                        LegStrategyID = "SL0", // Default
+                        Volatility = quote.IsSetField(5678) ? quote.GetString(5678) : null,
+                        MQSize = "1", // Default
+                        LegPremPrice = quote.IsSetField(5844) ? quote.GetString(5844) : null,
+                        LegSymbol = quote.GetString(Tags.Symbol)
+                    };
+                    msg.LegPricing.Add(legPricing);
+                    Console.WriteLine($"  [DEBUG] Created single leg from direct fields: Vol={legPricing.Volatility}, Premium={legPricing.LegPremPrice}");
+                }
             }
 
             return msg;
