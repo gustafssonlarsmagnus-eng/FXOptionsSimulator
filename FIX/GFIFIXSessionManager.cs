@@ -315,11 +315,12 @@ namespace FXOptionsSimulator.FIX
                 msg.SetField(new TransactTime(DateTime.UtcNow));
                 msg.OrdType = new OrdType(OrdType.PREVIOUSLY_QUOTED);
 
-                // Add required structure field (tag 9126) for GFI
+                // Add required fields for GFI
                 if (trade != null)
                 {
+                    msg.Symbol = new Symbol(trade.Underlying); // Tag 55 - Symbol
                     int structureCode = GetStructureCode(trade.StructureType);
-                    msg.SetField(new IntField(9126, structureCode));
+                    msg.SetField(new IntField(9126, structureCode)); // Tag 9126 - Structure
                 }
 
                 Session.SendToTarget(msg, _sessionID);
