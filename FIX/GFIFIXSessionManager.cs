@@ -322,6 +322,10 @@ namespace FXOptionsSimulator.FIX
                     msg.SetField(new Symbol(trade.Underlying)); // Tag 55 - Symbol
                     int structureCode = GetStructureCode(trade.StructureType);
                     msg.SetField(new IntField(9126, structureCode)); // Tag 9126 - Structure
+
+                    // Add NoLegs (tag 555)
+                    msg.SetField(new NoLegs(trade.Legs.Count)); // Tag 555 - Number of legs
+                    Console.WriteLine($"  [DEBUG] Added NoLegs: {trade.Legs.Count}");
                     Console.WriteLine($"  [DEBUG] Added Structure Code: {structureCode}");
                 }
                 else
