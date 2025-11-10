@@ -318,9 +318,15 @@ namespace FXOptionsSimulator.FIX
                 // Add required fields for GFI
                 if (trade != null)
                 {
-                    msg.Symbol = new Symbol(trade.Underlying); // Tag 55 - Symbol
+                    Console.WriteLine($"  [DEBUG] Adding Symbol: {trade.Underlying}");
+                    msg.SetField(new Symbol(trade.Underlying)); // Tag 55 - Symbol
                     int structureCode = GetStructureCode(trade.StructureType);
                     msg.SetField(new IntField(9126, structureCode)); // Tag 9126 - Structure
+                    Console.WriteLine($"  [DEBUG] Added Structure Code: {structureCode}");
+                }
+                else
+                {
+                    Console.WriteLine($"  [WARNING] Trade is NULL - cannot add Symbol/Structure!");
                 }
 
                 Session.SendToTarget(msg, _sessionID);
