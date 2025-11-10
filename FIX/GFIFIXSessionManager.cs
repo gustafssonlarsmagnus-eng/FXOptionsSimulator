@@ -315,6 +315,13 @@ namespace FXOptionsSimulator.FIX
                 msg.SetField(new TransactTime(DateTime.UtcNow));
                 msg.OrdType = new OrdType(OrdType.PREVIOUSLY_QUOTED);
 
+                // Add required structure field (tag 9126) for GFI
+                if (trade != null)
+                {
+                    int structureCode = GetStructureCode(trade.StructureType);
+                    msg.SetField(new IntField(9126, structureCode));
+                }
+
                 Session.SendToTarget(msg, _sessionID);
 
                 Console.WriteLine($"[FIX Manager] ✓ Execution sent");
@@ -344,6 +351,19 @@ namespace FXOptionsSimulator.FIX
                 Console.WriteLine($"[FIX Manager] ✗ ERROR executing: {ex.Message}");
                 throw;
             }
+        }
+
+        private int GetStructureCode(string structureType)
+        {
+            return structureType switch
+            {
+                "Vanilla" => 1,
+                "CallSpread" => 8,
+                "PutSpread" => 9,
+                "RiskReversal" => 5,
+                "Seagull" => 10,
+                _ => 1
+            };
         }
 
         #endregion
