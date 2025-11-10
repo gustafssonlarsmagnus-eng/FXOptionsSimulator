@@ -185,6 +185,82 @@ namespace FXOptionsSimulator.FIX
             return BuildCompleteMessage(_body.ToString());
         }
 
+        public string BuildNewOrderMultileg(
+            string clOrdID,
+            string quoteID,
+            string side, // "SELL" or "BUY"
+            string symbol,
+            int structureCode,
+            FIXMessage quote)
+        {
+            _body.Clear();
+
+            // Standard header fields (in body) - in FIX order
+            AddField(35, "AB"); // MsgType = NewOrderMultileg
+            AddField(34, _msgSeqNum.ToString()); // MsgSeqNum
+            AddField(49, _senderCompID); // SenderCompID
+            AddField(52, GetUTCTimestamp()); // SendingTime
+            AddField(56, _targetCompID); // TargetCompID
+
+            // Get LP from quote
+            string lpName = quote.Get("115"); // OnBehalfOfCompID
+            if (!string.IsNullOrEmpty(lpName))
+            {
+                AddField(128, lpName); // DeliverToCompID
+            }
+
+            // Body fields in EXACT order from GFI sample
+            AddField(11, clOrdID); // ClOrdID
+            AddField(40, "1"); // OrdType = MARKET (from example, though we might expect PREVIOUSLY_QUOTED)
+            AddField(54, side == "SELL" ? "2" : "1"); // Side
+            AddField(55, symbol); // Symbol
+            AddField(59, "3"); // TimeInForce = IMMEDIATE_OR_CANCEL
+            AddField(60, GetUTCTimestamp()); // TransactTime
+            AddField(117, quoteID); // QuoteID
+
+            // Get QuoteReqID from quote
+            string quoteReqID = quote.Get("131");
+            if (!string.IsNullOrEmpty(quoteReqID))
+            {
+                AddField(131, quoteReqID); // QuoteReqID
+            }
+
+            AddField(9126, structureCode.ToString()); // Structure
+
+            // NoLegs and leg repeating groups - fields in EXACT GFI order
+            if (quote.LegPricing != null && quote.LegPricing.Count > 0)
+            {
+                AddField(555, quote.LegPricing.Count.ToString()); // NoLegs
+
+                foreach (var legPricing in quote.LegPricing)
+                {
+                    // Fields in EXACT order from GFI example:
+                    // 1. LegSymbol (600)
+                    // 2. LegStrategyID (7940)
+                    // 3. Volatility (5678)
+                    // 4. MQSize (5359)
+                    // 5. LegPremPrice (5844)
+
+                    AddField(600, legPricing.LegSymbol ?? symbol); // LegSymbol
+
+                    if (!string.IsNullOrEmpty(legPricing.LegStrategyID))
+                        AddField(7940, legPricing.LegStrategyID); // LegStrategyID
+
+                    if (!string.IsNullOrEmpty(legPricing.Volatility))
+                        AddField(5678, legPricing.Volatility); // Volatility
+
+                    if (!string.IsNullOrEmpty(legPricing.MQSize))
+                        AddField(5359, legPricing.MQSize); // MQSize
+
+                    if (!string.IsNullOrEmpty(legPricing.LegPremPrice))
+                        AddField(5844, legPricing.LegPremPrice); // LegPremPrice
+                }
+            }
+
+            // Build complete message with header and trailer
+            return BuildCompleteMessage(_body.ToString());
+        }
+
         private void AddField(int tag, string value)
         {
             _body.Append(tag);
