@@ -333,11 +333,9 @@ namespace FXOptionsSimulator.FIX
 
                         legGroup.SetField(new LegSymbol(trade.Underlying)); // Tag 600
                         legGroup.SetField(new LegSide(leg.Direction == "BUY" ? '1' : '2')); // Tag 624
-                        legGroup.SetField(new IntField(612, (int)(leg.Strike * 10000))); // Tag 612 - LegStrikePrice
-                        legGroup.SetField(new IntField(6714, leg.OptionType == "CALL" ? 1 : 2)); // Tag 6714 - LegStrategy
 
                         msg.AddGroup(legGroup);
-                        Console.WriteLine($"  [DEBUG] Added Leg {i+1}: {leg.Direction} {leg.OptionType} @ {leg.Strike}");
+                        Console.WriteLine($"  [DEBUG] Added Leg {i+1}: {leg.Direction} {trade.Underlying}");
                     }
 
                     Console.WriteLine($"  [DEBUG] Added NoLegs: {trade.Legs.Count}");
