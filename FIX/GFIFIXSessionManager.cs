@@ -353,19 +353,6 @@ namespace FXOptionsSimulator.FIX
             }
         }
 
-        private int GetStructureCode(string structureType)
-        {
-            return structureType switch
-            {
-                "Vanilla" => 1,
-                "CallSpread" => 8,
-                "PutSpread" => 9,
-                "RiskReversal" => 5,
-                "Seagull" => 10,
-                _ => 1
-            };
-        }
-
         #endregion
     }
 }
