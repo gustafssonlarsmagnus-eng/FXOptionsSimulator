@@ -17,6 +17,7 @@ namespace FXOptionsSimulator.FIX
         private readonly GFIFIXApplication _application;
         private SessionID _sessionID;
         private RawFIXMessageBuilder _rawBuilder;
+        private readonly Dictionary<string, int> _executionCounters = new Dictionary<string, int>();
 
         public GFIFIXApplication Application => _application;
         public bool IsLoggedOn => _application.IsLoggedOn;
@@ -296,10 +297,17 @@ namespace FXOptionsSimulator.FIX
 
             string quoteID = quote.Get(Tags.QuoteID.ToString());
             string quoteReqID = quote.Get(Tags.QuoteReqID.ToString());
-            string clOrdID = $"ORD{DateTime.UtcNow.Ticks}";
+
+            // Increment execution counter for this QuoteReqID and generate ClOrdID with suffix
+            if (!_executionCounters.ContainsKey(quoteReqID))
+                _executionCounters[quoteReqID] = 0;
+
+            _executionCounters[quoteReqID]++;
+            string clOrdID = $"{quoteReqID}_{_executionCounters[quoteReqID]}";
 
             Console.WriteLine($"\n[FIX Manager] Executing trade");
             Console.WriteLine($"  ClOrdID: {clOrdID}");
+            Console.WriteLine($"  QuoteReqID: {quoteReqID}");
             Console.WriteLine($"  QuoteID: {quoteID}");
             Console.WriteLine($"  Side: {side}");
 

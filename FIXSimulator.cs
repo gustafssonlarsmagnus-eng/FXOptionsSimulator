@@ -13,6 +13,7 @@ namespace FXOptionsSimulator
         private Dictionary<string, SimulatedLiquidityProvider> _liquidityProviders;
         private Dictionary<string, List<StreamInfo>> _activeRequests;
         private int _seqNum;
+        private Dictionary<string, int> _executionCounters = new Dictionary<string, int>();
 
         public class StreamInfo
         {
@@ -278,16 +279,26 @@ namespace FXOptionsSimulator
             Console.WriteLine($"Side: {executionSide}");
             Console.WriteLine($"Quote: {quote.Get(TagStrings.OnBehalfOfCompID)} @ {quote.Get(TagStrings.Volatility)} vol\n");
 
+            // Get QuoteReqID and generate ClOrdID with suffix
+            string quoteReqID = quote.Get(TagStrings.QuoteReqID);
+
+            // Increment execution counter for this QuoteReqID
+            if (!_executionCounters.ContainsKey(quoteReqID))
+                _executionCounters[quoteReqID] = 0;
+
+            _executionCounters[quoteReqID]++;
+            string clOrdID = $"{quoteReqID}_{_executionCounters[quoteReqID]}";
+
             // Build New Order Multileg (35=AB)
             var order = new FIXMessage(MsgTypes.NewOrderMultileg)
                 .Set(TagStrings.SenderCompID, "<CLIENT>")
                 .Set(TagStrings.TargetCompID, "GFI")
-                .Set(TagStrings.ClOrdID, $"ORD{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}")
+                .Set(TagStrings.ClOrdID, clOrdID)
                 .Set("40", "1") // OrdType = MARKET
                 .Set("59", "3") // TimeInForce = IOC
                 .Set(TagStrings.Side, executionSide == "SELL" ? Values.Side.Sell : Values.Side.Buy)
                 .Set(TagStrings.QuoteID, quote.Get(TagStrings.QuoteID))
-                .Set(TagStrings.QuoteReqID, quote.Get(TagStrings.QuoteReqID))
+                .Set(TagStrings.QuoteReqID, quoteReqID)
                 .Set(TagStrings.SendingTime, DateTime.UtcNow.ToString("yyyyMMdd-HH:mm:ss.ffffff"));
 
             LogMessage("SENT", order);
