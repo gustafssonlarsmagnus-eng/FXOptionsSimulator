@@ -300,7 +300,7 @@ namespace FXOptionsSimulator.FIX
             string quoteID = quote.Get(Tags.QuoteID.ToString());
             string quoteReqID = quote.Get(Tags.QuoteReqID.ToString());
             string lpName = quote.Get(Tags.OnBehalfOfCompID.ToString());
-            string clOrdID = $"ORD{DateTime.UtcNow.Ticks}";
+            string clOrdID = $"{quoteReqID}_1";
 
             Console.WriteLine($"\n[FIX Manager] Executing trade");
             Console.WriteLine($"  ClOrdID: {clOrdID}");
