@@ -220,15 +220,18 @@ namespace FXOptionsSimulator.FIX
                 };
 
                 var nowUtc = DateTime.UtcNow;
-                // Compute business-day-safe trade date and premium date
-                var (tradeDt, _, _, _, premiumDt) =
-                    FxDateService.ComputeDates(nowUtc, pair, "0D", premiumCcy, rules);
 
-                var canonical75 = FxDateService.Ymd(tradeDt);
+                // Tag 75 (TradeDate) must be TODAY's actual date (not business-day-adjusted)
+                // GFI explicitly requires: "Trade date has to be current date"
+                var canonical75 = nowUtc.ToString("yyyyMMdd");
+
+                // Tag 5020 (PremiumDelivery) is T+1 business day from today
+                var (_, _, _, _, premiumDt) =
+                    FxDateService.ComputeDates(nowUtc, pair, "0D", premiumCcy, rules);
                 var canonical5020 = FxDateService.Ymd(premiumDt);
 
                 Console.WriteLine($"[Dates] Policy: premium={P.PremiumCalendarMode}, conv={P.PremiumConvention}, spotLag={rules.SpotLag}");
-                Console.WriteLine($"[Dates] 75={canonical75} 5020={canonical5020}");
+                Console.WriteLine($"[Dates] 75={canonical75} (TODAY) 5020={canonical5020} (T+{P.PremiumSettleDays})");
 
                 // ===== Get current sequence number and increment for next message =====
                 var session = Session.LookupSession(_sessionID);
