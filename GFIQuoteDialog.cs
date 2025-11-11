@@ -610,10 +610,10 @@ namespace FXOAiTranslator
 
                     Console.WriteLine($"[COUNTDOWN TICK] Row {row.Index}: Parsing '{validUntilStr}'");
 
-                    // Parse ValidUntilTime: format is "YYYYMMDD-HH:mm:ss"
+                    // Parse ValidUntilTime: format is "YYYYMMDD-HH:mm:ss" (already in UTC)
                     if (DateTime.TryParseExact(validUntilStr, "yyyyMMdd-HH:mm:ss",
                         System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.AssumeUniversal,
+                        System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
                         out DateTime validUntil))
                     {
                         var remainingTime = validUntil - nowUtc;
