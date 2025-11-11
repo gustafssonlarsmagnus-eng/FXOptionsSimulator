@@ -702,6 +702,9 @@ namespace FXOAiTranslator
         {
             if (quote == null) return null;
 
+            // Get LP name to check for LP-specific premium units
+            string lpName = quote.Get(Tags.OnBehalfOfCompID.ToString()) ?? "";
+
             // Use new LegPricing structure
             if (quote.LegPricing != null && quote.LegPricing.Count > 0)
             {
@@ -710,6 +713,12 @@ namespace FXOAiTranslator
                 {
                     if (!string.IsNullOrEmpty(leg.LegPremPrice) && double.TryParse(leg.LegPremPrice, out double prem))
                     {
+                        // HSBC sends premiums in percentage, others in basis points
+                        // Convert HSBC from % to bps by multiplying by 100
+                        if (lpName == "HSBC")
+                        {
+                            prem *= 100.0;
+                        }
                         netPrem += prem;
                     }
                 }
@@ -723,6 +732,11 @@ namespace FXOAiTranslator
                 var premStr = quote.Get($"leg{i}_5844");
                 if (!string.IsNullOrEmpty(premStr) && double.TryParse(premStr, out double prem))
                 {
+                    // HSBC sends premiums in percentage, others in basis points
+                    if (lpName == "HSBC")
+                    {
+                        prem *= 100.0;
+                    }
                     netPremOld += prem;
                 }
             }
