@@ -16,11 +16,11 @@ namespace FXOAiTranslator
         private System.Windows.Forms.Timer _quoteTimer;
         private DataGridView dgvQuotes;
         private DataGridView dgvLegs;
+        private DataGridView dgvBlotter;  // NEW: Trade blotter grid
         private Button btnRequestQuotes;
         private Button btnExecute;
         private Button btnCancel;
-        private Button btnBuy;    
-        private Button btnViewBlotter;
+        private Button btnBuy;
         private Label lblTradeSummary;
         private GroupBox gbLPs;
         private CheckBox chkMS;
@@ -70,7 +70,7 @@ namespace FXOAiTranslator
         private void InitializeCustomComponents()
         {
             this.Text = "GFI Fenics - Request Quotes";
-            this.Size = new Size(1000, 700);  // Increased height for more LPs
+            this.Size = new Size(1000, 850);  // Increased height for blotter
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -232,11 +232,11 @@ namespace FXOAiTranslator
             };
             gbLPs.Controls.Add(chkDBS);
 
-            // Quotes Grid - adjusted position
+            // Quotes Grid - reduced size to make room for blotter
             dgvQuotes = new DataGridView
             {
-                Location = new Point(20, 330),  // Moved down
-                Size = new Size(940, 270),      // Adjusted size
+                Location = new Point(20, 330),
+                Size = new Size(940, 200),      // Reduced from 270
                 AllowUserToAddRows = false,
                 AllowUserToDeleteRows = false,
                 ReadOnly = true,
@@ -248,11 +248,54 @@ namespace FXOAiTranslator
 
             this.Controls.Add(dgvQuotes);
 
-            // Buttons - adjusted position
+            // Trade Blotter Grid - NEW
+            var lblBlotter = new Label
+            {
+                Text = "Trade Blotter:",
+                Location = new Point(20, 540),
+                Size = new Size(200, 20),
+                Font = new Font("Segoe UI", 9, FontStyle.Bold)
+            };
+            this.Controls.Add(lblBlotter);
+
+            dgvBlotter = new DataGridView
+            {
+                Location = new Point(20, 565),
+                Size = new Size(940, 150),
+                AllowUserToAddRows = false,
+                AllowUserToDeleteRows = false,
+                ReadOnly = true,
+                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                MultiSelect = false,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                RowHeadersVisible = false
+            };
+
+            // Blotter columns
+            dgvBlotter.Columns.Add("Time", "Time");
+            dgvBlotter.Columns["Time"].Width = 100;
+            dgvBlotter.Columns.Add("ClOrdID", "Order ID");
+            dgvBlotter.Columns["ClOrdID"].Width = 150;
+            dgvBlotter.Columns.Add("LP", "LP");
+            dgvBlotter.Columns["LP"].Width = 80;
+            dgvBlotter.Columns.Add("Side", "Side");
+            dgvBlotter.Columns["Side"].Width = 60;
+            dgvBlotter.Columns.Add("Symbol", "Symbol");
+            dgvBlotter.Columns["Symbol"].Width = 80;
+            dgvBlotter.Columns.Add("Structure", "Structure");
+            dgvBlotter.Columns["Structure"].Width = 100;
+            dgvBlotter.Columns.Add("Premium", "Premium");
+            dgvBlotter.Columns["Premium"].Width = 80;
+            dgvBlotter.Columns.Add("Status", "Status");
+            dgvBlotter.Columns["Status"].Width = 100;
+
+            this.Controls.Add(dgvBlotter);
+
+            // Buttons - moved down for blotter
             btnRequestQuotes = new Button
             {
                 Text = "Request Quotes",
-                Location = new Point(20, 620),  // Moved down
+                Location = new Point(20, 730),
                 Size = new Size(150, 35),
                 Font = new Font("Segoe UI", 10, FontStyle.Bold)
             };
@@ -262,7 +305,7 @@ namespace FXOAiTranslator
             btnExecute = new Button
             {
                 Text = "Sell (Hit Bid)",
-                Location = new Point(190, 620),
+                Location = new Point(190, 730),
                 Size = new Size(150, 35),
                 Font = new Font("Segoe UI", 10, FontStyle.Bold),
                 Enabled = false
@@ -273,62 +316,27 @@ namespace FXOAiTranslator
             btnBuy = new Button
             {
                 Text = "Buy (Lift Offer)",
-                Location = new Point(360, 620),
+                Location = new Point(360, 730),
                 Size = new Size(150, 35),
                 Font = new Font("Segoe UI", 10, FontStyle.Bold),
                 Enabled = false
             };
             btnBuy.Click += (s, e) => BtnExecute_Click("BUY");
             this.Controls.Add(btnBuy);
-
-            btnViewBlotter = new Button
-            {
-                Text = "View Blotter",
-                Location = new Point(530, 620),
-                Size = new Size(150, 35),
-                Font = new Font("Segoe UI", 10, FontStyle.Regular)
-            };
-            btnViewBlotter.Click += (s, e) =>
-            {
-                var blotter = new TradeBlotterForm();
-                blotter.Show();
-            };
-            this.Controls.Add(btnViewBlotter);
-
-            btnBuy = new Button
-            {
-                Text = "Buy (Lift Offer)",
-                Location = new Point(360, 620),
-                Size = new Size(150, 35),
-                Font = new Font("Segoe UI", 10, FontStyle.Bold),
-                Enabled = false
-            };
-            btnBuy.Click += (s, e) => BtnExecute_Click("BUY");
-            this.Controls.Add(btnBuy);
-
-            btnViewBlotter = new Button
-            {
-                Text = "View Blotter",
-                Location = new Point(530, 620),
-                Size = new Size(150, 35),
-                Font = new Font("Segoe UI", 10, FontStyle.Regular)
-            };
-            btnViewBlotter.Click += (s, e) =>
-            {
-                var blotter = new TradeBlotterForm();
-                blotter.Show();
-            };
-            this.Controls.Add(btnViewBlotter);
 
             btnCancel = new Button
             {
-                Text = "Cancel",
-                Location = new Point(810, 620),  // Moved down
+                Text = "Close",
+                Location = new Point(530, 730),
                 Size = new Size(150, 35),
                 DialogResult = DialogResult.Cancel
             };
             this.Controls.Add(btnCancel);
             this.CancelButton = btnCancel;
+
+            // Subscribe to blotter events to update grid
+            TradeBlotter.Instance.OnTradeAdded += OnTradeAddedToBlotter;
+            TradeBlotter.Instance.OnTradeUpdated += OnTradeUpdatedInBlotter;
         }
 
         private void PopulateLegGrid()
@@ -716,15 +724,14 @@ namespace FXOAiTranslator
                     $"LP: {lpName}\n" +
                     $"Side: {side}\n" +
                     $"Net Premium: {netPrem?.ToString("N2") ?? "N/A"} pips\n\n" +
-                    $"Waiting for execution report...\n\n" +
-                    $"Check the Trade Blotter for updates.",
+                    $"Watch the Trade Blotter below for execution updates.",
                     "Order Sent",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information
                 );
 
-                this.DialogResult = DialogResult.OK;
-                this.Close();
+                // Don't close dialog - let user see blotter updates
+                _quoteTimer?.Start();
             }
             catch (Exception ex)
             {
@@ -734,10 +741,78 @@ namespace FXOAiTranslator
             }
         }
 
+        private void OnTradeAddedToBlotter(TradeBlotterEntry entry)
+        {
+            if (dgvBlotter.InvokeRequired)
+            {
+                dgvBlotter.Invoke(new Action(() => OnTradeAddedToBlotter(entry)));
+                return;
+            }
+
+            dgvBlotter.Rows.Add(
+                entry.TradeTime.ToString("HH:mm:ss"),
+                entry.ClOrdID,
+                entry.LP,
+                entry.Side,
+                entry.Underlying,
+                entry.StructureType,
+                entry.NetPremium.ToString("N2"),
+                entry.Status
+            );
+
+            // Color code by status
+            var row = dgvBlotter.Rows[dgvBlotter.Rows.Count - 1];
+            ColorCodeBlotterRow(row, entry.Status);
+        }
+
+        private void OnTradeUpdatedInBlotter(TradeBlotterEntry entry)
+        {
+            if (dgvBlotter.InvokeRequired)
+            {
+                dgvBlotter.Invoke(new Action(() => OnTradeUpdatedInBlotter(entry)));
+                return;
+            }
+
+            // Find the row with matching ClOrdID and update it
+            foreach (DataGridViewRow row in dgvBlotter.Rows)
+            {
+                if (row.Cells["ClOrdID"].Value?.ToString() == entry.ClOrdID)
+                {
+                    row.Cells["Status"].Value = entry.Status;
+                    row.Cells["Premium"].Value = entry.NetPremium.ToString("N2");
+                    ColorCodeBlotterRow(row, entry.Status);
+                    break;
+                }
+            }
+        }
+
+        private void ColorCodeBlotterRow(DataGridViewRow row, string status)
+        {
+            switch (status?.ToUpper())
+            {
+                case "FILLED":
+                    row.DefaultCellStyle.BackColor = Color.LightGreen;
+                    break;
+                case "REJECTED":
+                    row.DefaultCellStyle.BackColor = Color.LightCoral;
+                    break;
+                case "PENDING":
+                    row.DefaultCellStyle.BackColor = Color.LightYellow;
+                    break;
+                default:
+                    row.DefaultCellStyle.BackColor = Color.White;
+                    break;
+            }
+        }
+
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             _quoteTimer?.Stop();
             _quoteTimer?.Dispose();
+
+            // Unsubscribe from blotter events
+            TradeBlotter.Instance.OnTradeAdded -= OnTradeAddedToBlotter;
+            TradeBlotter.Instance.OnTradeUpdated -= OnTradeUpdatedInBlotter;
 
             // Unsubscribe from events
             _fixSession.Application.OnQuoteReceived -= OnQuoteReceivedFromFIX;
