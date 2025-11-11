@@ -14,6 +14,7 @@ namespace FXOAiTranslator
         private TradeStructure _trade;
         private string _groupId;
         private System.Windows.Forms.Timer _quoteTimer;
+        private System.Windows.Forms.Timer _countdownTimer;  // NEW: For quote expiry countdown
         private DataGridView dgvQuotes;
         private DataGridView dgvLegs;
         private DataGridView dgvBlotter;  // NEW: Trade blotter grid
@@ -337,6 +338,11 @@ namespace FXOAiTranslator
             // Subscribe to blotter events to update grid
             TradeBlotter.Instance.OnTradeAdded += OnTradeAddedToBlotter;
             TradeBlotter.Instance.OnTradeUpdated += OnTradeUpdatedInBlotter;
+
+            // Countdown timer for quote expiry
+            _countdownTimer = new System.Windows.Forms.Timer();
+            _countdownTimer.Interval = 1000; // Update every second
+            _countdownTimer.Tick += CountdownTimer_Tick;
         }
 
         private void PopulateLegGrid()
@@ -386,6 +392,11 @@ namespace FXOAiTranslator
 
             dgvQuotes.Columns.Add("LastUpdate", "Last Update");
             dgvQuotes.Columns["LastUpdate"].Width = 80;
+
+            dgvQuotes.Columns.Add("TTL", "Expires In");
+            dgvQuotes.Columns["TTL"].Width = 90;
+            dgvQuotes.Columns.Add("ValidUntilTime", "ValidUntilTime");  // Hidden column to store expiry time
+            dgvQuotes.Columns["ValidUntilTime"].Visible = false;
         }
 
         private void BtnRequestQuotes_Click(object sender, EventArgs e)
@@ -535,6 +546,11 @@ namespace FXOAiTranslator
 
                 rowData.Add(stream.LastUpdate.ToString("HH:mm:ss"));
 
+                // Extract ValidUntilTime (tag 62) from the quote
+                string validUntilStr = stream.OfferQuote?.Get("62") ?? stream.BidQuote?.Get("62");
+                rowData.Add(""); // TTL - will be calculated by timer
+                rowData.Add(validUntilStr ?? ""); // Hidden ValidUntilTime column
+
                 var rowIndex = dgvQuotes.Rows.Add(rowData.ToArray());
 
                 var (bestBid, bestOffer) = GetBestPremiums();
@@ -557,7 +573,83 @@ namespace FXOAiTranslator
             if (streams.Any(s => s.BidQuote != null || s.OfferQuote != null))
             {
                 btnExecute.Enabled = true;
-                // Also enable the buy button (find it by iterating controls or store as field)
+                btnBuy.Enabled = true;
+            }
+
+            // Start countdown timer
+            if (!_countdownTimer.Enabled)
+                _countdownTimer.Start();
+        }
+
+        private void CountdownTimer_Tick(object sender, EventArgs e)
+        {
+            if (dgvQuotes.InvokeRequired)
+            {
+                dgvQuotes.Invoke(new Action(() => CountdownTimer_Tick(sender, e)));
+                return;
+            }
+
+            var nowUtc = DateTime.UtcNow;
+
+            foreach (DataGridViewRow row in dgvQuotes.Rows)
+            {
+                try
+                {
+                    string validUntilStr = row.Cells["ValidUntilTime"].Value?.ToString();
+                    if (string.IsNullOrEmpty(validUntilStr))
+                    {
+                        row.Cells["TTL"].Value = "-";
+                        continue;
+                    }
+
+                    // Parse ValidUntilTime: format is "YYYYMMDD-HH:mm:ss"
+                    if (DateTime.TryParseExact(validUntilStr, "yyyyMMdd-HH:mm:ss",
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.AssumeUniversal,
+                        out DateTime validUntil))
+                    {
+                        var remainingTime = validUntil - nowUtc;
+
+                        if (remainingTime.TotalSeconds <= 0)
+                        {
+                            row.Cells["TTL"].Value = "EXPIRED";
+                            row.Cells["TTL"].Style.BackColor = Color.LightGray;
+                            row.Cells["TTL"].Style.ForeColor = Color.DarkRed;
+                        }
+                        else
+                        {
+                            // Format as MM:SS
+                            int minutes = (int)remainingTime.TotalMinutes;
+                            int seconds = remainingTime.Seconds;
+                            row.Cells["TTL"].Value = $"{minutes}:{seconds:D2}";
+
+                            // Color code based on time remaining
+                            if (remainingTime.TotalSeconds > 60)
+                            {
+                                row.Cells["TTL"].Style.BackColor = Color.LightGreen;
+                                row.Cells["TTL"].Style.ForeColor = Color.Black;
+                            }
+                            else if (remainingTime.TotalSeconds > 30)
+                            {
+                                row.Cells["TTL"].Style.BackColor = Color.Yellow;
+                                row.Cells["TTL"].Style.ForeColor = Color.Black;
+                            }
+                            else
+                            {
+                                row.Cells["TTL"].Style.BackColor = Color.LightCoral;
+                                row.Cells["TTL"].Style.ForeColor = Color.White;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        row.Cells["TTL"].Value = "-";
+                    }
+                }
+                catch
+                {
+                    row.Cells["TTL"].Value = "-";
+                }
             }
         }
 
@@ -809,6 +901,9 @@ namespace FXOAiTranslator
         {
             _quoteTimer?.Stop();
             _quoteTimer?.Dispose();
+
+            _countdownTimer?.Stop();
+            _countdownTimer?.Dispose();
 
             // Unsubscribe from blotter events
             TradeBlotter.Instance.OnTradeAdded -= OnTradeAddedToBlotter;
