@@ -227,6 +227,12 @@ namespace FXOptionsSimulator.FIX
 
             AddField(9126, structureCode.ToString()); // Structure
 
+            // PartyIDs group - required for UAT trader identification
+            AddField(453, "1"); // NoPartyIDs
+            AddField(448, _senderCompID); // PartyID - use SenderCompID as trader ID
+            AddField(447, "D"); // PartyIDSource = PROPRIETARY_CUSTOM_CODE
+            AddField(452, "11"); // PartyRole = OrderOriginationTrader
+
             // NoLegs and leg repeating groups - fields in EXACT GFI order
             if (quote.LegPricing != null && quote.LegPricing.Count > 0)
             {
