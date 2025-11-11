@@ -520,6 +520,14 @@ namespace FXOptionsSimulator.FIX
             msg.Set(Tags.Side.ToString(), quote.GetString(Tags.Side));
             msg.Set(Tags.Symbol.ToString(), quote.GetString(Tags.Symbol));
 
+            // Extract ValidUntilTime (tag 62) for countdown timer
+            if (quote.IsSetField(62))
+            {
+                string validUntilTime = quote.GetString(62);
+                msg.Set("62", validUntilTime);
+                Console.WriteLine($"  [DEBUG] ValidUntilTime (tag 62): {validUntilTime}");
+            }
+
             // For debugging - print the full raw message
             Console.WriteLine($"  [DEBUG] Raw quote message:");
             Console.WriteLine($"  {quote.ToString().Replace("\x01", "|")}");
