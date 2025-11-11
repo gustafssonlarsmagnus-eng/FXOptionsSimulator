@@ -548,6 +548,10 @@ namespace FXOAiTranslator
 
                 // Extract ValidUntilTime (tag 62) from the quote
                 string validUntilStr = stream.OfferQuote?.Get("62") ?? stream.BidQuote?.Get("62");
+
+                // DEBUG: Log what we got for tag 62
+                Console.WriteLine($"[COUNTDOWN DEBUG] LP={stream.LP}, ValidUntilTime (tag 62)='{validUntilStr}'");
+
                 rowData.Add(""); // TTL - will be calculated by timer
                 rowData.Add(validUntilStr ?? ""); // Hidden ValidUntilTime column
 
@@ -590,6 +594,7 @@ namespace FXOAiTranslator
             }
 
             var nowUtc = DateTime.UtcNow;
+            Console.WriteLine($"[COUNTDOWN TICK] Current UTC: {nowUtc:yyyy-MM-dd HH:mm:ss}, Rows: {dgvQuotes.Rows.Count}");
 
             foreach (DataGridViewRow row in dgvQuotes.Rows)
             {
@@ -598,9 +603,12 @@ namespace FXOAiTranslator
                     string validUntilStr = row.Cells["ValidUntilTime"].Value?.ToString();
                     if (string.IsNullOrEmpty(validUntilStr))
                     {
+                        Console.WriteLine($"[COUNTDOWN TICK] Row {row.Index}: Empty ValidUntilTime");
                         row.Cells["TTL"].Value = "-";
                         continue;
                     }
+
+                    Console.WriteLine($"[COUNTDOWN TICK] Row {row.Index}: Parsing '{validUntilStr}'");
 
                     // Parse ValidUntilTime: format is "YYYYMMDD-HH:mm:ss"
                     if (DateTime.TryParseExact(validUntilStr, "yyyyMMdd-HH:mm:ss",
@@ -609,6 +617,7 @@ namespace FXOAiTranslator
                         out DateTime validUntil))
                     {
                         var remainingTime = validUntil - nowUtc;
+                        Console.WriteLine($"[COUNTDOWN TICK] Row {row.Index}: Remaining time = {remainingTime.TotalSeconds:F1}s");
 
                         if (remainingTime.TotalSeconds <= 0)
                         {
@@ -643,11 +652,13 @@ namespace FXOAiTranslator
                     }
                     else
                     {
+                        Console.WriteLine($"[COUNTDOWN TICK] Row {row.Index}: Failed to parse '{validUntilStr}' - format mismatch");
                         row.Cells["TTL"].Value = "-";
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Console.WriteLine($"[COUNTDOWN TICK] Row {row.Index}: Exception - {ex.Message}");
                     row.Cells["TTL"].Value = "-";
                 }
             }
