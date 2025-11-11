@@ -585,6 +585,9 @@ namespace FXOAiTranslator
                 btnBuy.Enabled = true;
             }
 
+            // Clear selection so best price highlighting is visible (not covered by blue selection)
+            dgvQuotes.ClearSelection();
+
             // Start countdown timer
             if (!_countdownTimer.Enabled)
                 _countdownTimer.Start();
