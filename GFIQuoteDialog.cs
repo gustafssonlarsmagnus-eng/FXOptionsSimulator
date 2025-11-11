@@ -244,11 +244,10 @@ namespace FXOAiTranslator
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 MultiSelect = false,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells,
-                RowHeadersVisible = false,
-                DoubleBuffered = true  // Reduce flickering
+                RowHeadersVisible = false
             };
 
-            // Enable double buffering to reduce flicker
+            // Enable double buffering to reduce flicker (via reflection since DoubleBuffered is protected)
             typeof(DataGridView).InvokeMember("DoubleBuffered",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.SetProperty,
                 null, dgvQuotes, new object[] { true });
