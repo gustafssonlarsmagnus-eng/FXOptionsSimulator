@@ -244,8 +244,14 @@ namespace FXOAiTranslator
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 MultiSelect = false,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells,
-                RowHeadersVisible = false
+                RowHeadersVisible = false,
+                DoubleBuffered = true  // Reduce flickering
             };
+
+            // Enable double buffering to reduce flicker
+            typeof(DataGridView).InvokeMember("DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.SetProperty,
+                null, dgvQuotes, new object[] { true });
 
             this.Controls.Add(dgvQuotes);
 
@@ -594,73 +600,99 @@ namespace FXOAiTranslator
             }
 
             var nowUtc = DateTime.UtcNow;
-            Console.WriteLine($"[COUNTDOWN TICK] Current UTC: {nowUtc:yyyy-MM-dd HH:mm:ss}, Rows: {dgvQuotes.Rows.Count}");
 
-            foreach (DataGridViewRow row in dgvQuotes.Rows)
+            // Suspend painting to reduce flicker
+            dgvQuotes.SuspendLayout();
+
+            try
             {
-                try
+                foreach (DataGridViewRow row in dgvQuotes.Rows)
                 {
-                    string validUntilStr = row.Cells["ValidUntilTime"].Value?.ToString();
-                    if (string.IsNullOrEmpty(validUntilStr))
+                    try
                     {
-                        Console.WriteLine($"[COUNTDOWN TICK] Row {row.Index}: Empty ValidUntilTime");
-                        row.Cells["TTL"].Value = "-";
-                        continue;
-                    }
-
-                    Console.WriteLine($"[COUNTDOWN TICK] Row {row.Index}: Parsing '{validUntilStr}'");
-
-                    // Parse ValidUntilTime: format is "YYYYMMDD-HH:mm:ss" (already in UTC)
-                    if (DateTime.TryParseExact(validUntilStr, "yyyyMMdd-HH:mm:ss",
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
-                        out DateTime validUntil))
-                    {
-                        var remainingTime = validUntil - nowUtc;
-                        Console.WriteLine($"[COUNTDOWN TICK] Row {row.Index}: Remaining time = {remainingTime.TotalSeconds:F1}s");
-
-                        if (remainingTime.TotalSeconds <= 0)
+                        string validUntilStr = row.Cells["ValidUntilTime"].Value?.ToString();
+                        if (string.IsNullOrEmpty(validUntilStr))
                         {
-                            row.Cells["TTL"].Value = "EXPIRED";
-                            row.Cells["TTL"].Style.BackColor = Color.LightGray;
-                            row.Cells["TTL"].Style.ForeColor = Color.DarkRed;
+                            if (row.Cells["TTL"].Value?.ToString() != "-")
+                                row.Cells["TTL"].Value = "-";
+                            continue;
                         }
-                        else
-                        {
-                            // Format as MM:SS
-                            int minutes = (int)remainingTime.TotalMinutes;
-                            int seconds = remainingTime.Seconds;
-                            row.Cells["TTL"].Value = $"{minutes}:{seconds:D2}";
 
-                            // Color code based on time remaining
-                            if (remainingTime.TotalSeconds > 60)
+                        // Parse ValidUntilTime: format is "YYYYMMDD-HH:mm:ss" (already in UTC)
+                        if (DateTime.TryParseExact(validUntilStr, "yyyyMMdd-HH:mm:ss",
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                            out DateTime validUntil))
+                        {
+                            var remainingTime = validUntil - nowUtc;
+                            var ttlCell = row.Cells["TTL"];
+                            string newValue;
+                            Color newBackColor;
+                            Color newForeColor;
+
+                            if (remainingTime.TotalSeconds <= 0)
                             {
-                                row.Cells["TTL"].Style.BackColor = Color.LightGreen;
-                                row.Cells["TTL"].Style.ForeColor = Color.Black;
-                            }
-                            else if (remainingTime.TotalSeconds > 30)
-                            {
-                                row.Cells["TTL"].Style.BackColor = Color.Yellow;
-                                row.Cells["TTL"].Style.ForeColor = Color.Black;
+                                newValue = "EXPIRED";
+                                newBackColor = Color.LightGray;
+                                newForeColor = Color.DarkRed;
                             }
                             else
                             {
-                                row.Cells["TTL"].Style.BackColor = Color.LightCoral;
-                                row.Cells["TTL"].Style.ForeColor = Color.White;
+                                // Format as MM:SS
+                                int minutes = (int)remainingTime.TotalMinutes;
+                                int seconds = remainingTime.Seconds;
+                                newValue = $"{minutes}:{seconds:D2}";
+
+                                // Color code based on time remaining
+                                if (remainingTime.TotalSeconds > 60)
+                                {
+                                    newBackColor = Color.LightGreen;
+                                    newForeColor = Color.Black;
+                                }
+                                else if (remainingTime.TotalSeconds > 30)
+                                {
+                                    newBackColor = Color.Yellow;
+                                    newForeColor = Color.Black;
+                                }
+                                else
+                                {
+                                    newBackColor = Color.LightCoral;
+                                    newForeColor = Color.White;
+                                }
+                            }
+
+                            // Only update if value changed (reduces redraws)
+                            if (ttlCell.Value?.ToString() != newValue)
+                            {
+                                ttlCell.Value = newValue;
+                            }
+
+                            // Only update colors if they changed
+                            if (ttlCell.Style.BackColor != newBackColor)
+                            {
+                                ttlCell.Style.BackColor = newBackColor;
+                            }
+                            if (ttlCell.Style.ForeColor != newForeColor)
+                            {
+                                ttlCell.Style.ForeColor = newForeColor;
                             }
                         }
+                        else
+                        {
+                            if (row.Cells["TTL"].Value?.ToString() != "-")
+                                row.Cells["TTL"].Value = "-";
+                        }
                     }
-                    else
+                    catch
                     {
-                        Console.WriteLine($"[COUNTDOWN TICK] Row {row.Index}: Failed to parse '{validUntilStr}' - format mismatch");
-                        row.Cells["TTL"].Value = "-";
+                        if (row.Cells["TTL"].Value?.ToString() != "-")
+                            row.Cells["TTL"].Value = "-";
                     }
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[COUNTDOWN TICK] Row {row.Index}: Exception - {ex.Message}");
-                    row.Cells["TTL"].Value = "-";
-                }
+            }
+            finally
+            {
+                dgvQuotes.ResumeLayout();
             }
         }
 
