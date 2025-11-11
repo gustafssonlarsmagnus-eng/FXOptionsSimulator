@@ -851,19 +851,7 @@ namespace FXOAiTranslator
 
                 string clOrdID = _fixSession.SendExecution(selectedQuote, side, _trade);
 
-                var netPrem = CalculateNetPremium(selectedQuote);
-                MessageBox.Show(
-                    $"Trade SENT!\n\n" +
-                    $"Order ID: {clOrdID}\n" +
-                    $"LP: {lpName}\n" +
-                    $"Side: {side}\n" +
-                    $"Net Premium: {netPrem?.ToString("N2") ?? "N/A"} pips\n\n" +
-                    $"Watch the Trade Blotter below for execution updates.",
-                    "Order Sent",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information
-                );
-
+                // Order sent - user will see updates in the trade blotter below
                 // Don't close dialog - let user see blotter updates
                 _quoteTimer?.Start();
             }
