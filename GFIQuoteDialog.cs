@@ -66,6 +66,7 @@ namespace FXOAiTranslator
 
             // Subscribe to quote events
             _fixSession.Application.OnQuoteReceived += OnQuoteReceivedFromFIX;
+            _fixSession.Application.OnQuoteCanceled += OnQuoteCanceledFromFIX;
         }
 
         private void InitializeCustomComponents()
@@ -524,6 +525,19 @@ namespace FXOAiTranslator
             UpdateQuoteDisplay();
         }
 
+        private void OnQuoteCanceledFromFIX(string quoteReqID, string lpName, string quoteID)
+        {
+            // Marshal to UI thread
+            if (this.InvokeRequired)
+            {
+                this.Invoke(new Action(() => OnQuoteCanceledFromFIX(quoteReqID, lpName, quoteID)));
+                return;
+            }
+
+            Console.WriteLine($"[UI] Quote canceled: {lpName} - {quoteID}, refreshing display");
+            UpdateQuoteDisplay();
+        }
+
         private void UpdateQuoteDisplay()
         {
             dgvQuotes.Rows.Clear();
@@ -864,6 +878,27 @@ namespace FXOAiTranslator
                     selectedQuote = bestOfferQuote;
                     selectedPremium = bestOfferPremium;
                     lpName = bestOfferQuote.Get(Tags.OnBehalfOfCompID.ToString());
+                }
+
+                // Validate quote hasn't expired before execution
+                string validUntilStr = selectedQuote.Get("62");
+                if (!string.IsNullOrEmpty(validUntilStr))
+                {
+                    if (DateTime.TryParseExact(validUntilStr, "yyyyMMdd-HH:mm:ss",
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                        out DateTime validUntil))
+                    {
+                        if (validUntil <= DateTime.UtcNow)
+                        {
+                            MessageBox.Show($"Quote from {lpName} has expired. Please wait for a fresh quote.",
+                                "Quote Expired",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Warning);
+                            _quoteTimer?.Start();
+                            return;
+                        }
+                    }
                 }
 
                 string clOrdID = _fixSession.SendExecution(selectedQuote, side, _trade);
