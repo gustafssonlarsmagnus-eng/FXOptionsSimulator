@@ -296,12 +296,29 @@ namespace FXOptionsSimulator.FIX
 
             string quoteID = quote.Get(Tags.QuoteID.ToString());
             string quoteReqID = quote.Get(Tags.QuoteReqID.ToString());
-            string clOrdID = $"ORD{DateTime.UtcNow.Ticks}";
+            string lpName = quote.Get(Tags.OnBehalfOfCompID.ToString());
+            string clOrdID = $"FENICS.31491.Q{DateTime.UtcNow.Ticks}_1";
 
-            Console.WriteLine($"\n[FIX Manager] Executing trade");
+            Console.WriteLine($"\n[FIX Manager] Preparing to execute trade");
             Console.WriteLine($"  ClOrdID: {clOrdID}");
             Console.WriteLine($"  QuoteID: {quoteID}");
+            Console.WriteLine($"  QuoteReqID: {quoteReqID}");
+            Console.WriteLine($"  LP: {lpName}");
             Console.WriteLine($"  Side: {side}");
+
+            // CRITICAL FIX: Validate quote is still valid before executing
+            var (isValid, reason) = _application.ValidateQuoteForExecution(quoteReqID, lpName, side);
+
+            if (!isValid)
+            {
+                string errorMsg = $"Cannot execute: {reason}";
+                Console.WriteLine($"[FIX Manager] ✗ EXECUTION BLOCKED: {errorMsg}");
+                Console.WriteLine($"[FIX Manager] 💡 The quote has been canceled or is no longer available.");
+                Console.WriteLine($"[FIX Manager] 💡 Please request a fresh quote before executing.");
+                throw new InvalidOperationException(errorMsg);
+            }
+
+            Console.WriteLine($"[FIX Manager] ✓ Quote validated - proceeding with execution");
 
             try
             {
@@ -315,7 +332,7 @@ namespace FXOptionsSimulator.FIX
 
                 Session.SendToTarget(msg, _sessionID);
 
-                Console.WriteLine($"[FIX Manager] ✓ Execution sent");
+                Console.WriteLine($"[FIX Manager] ✓ Execution sent to GFI");
             }
             catch (Exception ex)
             {

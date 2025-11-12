@@ -572,6 +572,58 @@ namespace FXOptionsSimulator.FIX
             return result;
         }
 
+        /// <summary>
+        /// Validates if a quote is still valid for execution
+        /// </summary>
+        public (bool isValid, string reason) ValidateQuoteForExecution(string quoteReqID, string lpName, string side)
+        {
+            string key = $"{quoteReqID}_{lpName}";
+
+            if (!_quotes.TryGetValue(key, out var stream))
+            {
+                return (false, $"Quote stream not found for {lpName}");
+            }
+
+            // Check if the specific side (bid/offer) is available
+            FIXMessage quote = side == "BUY" ? stream.OfferQuote : stream.BidQuote;
+
+            if (quote == null)
+            {
+                return (false, $"Quote for {side} side has been canceled or not yet received");
+            }
+
+            // Check quote freshness (quotes older than 5 seconds are stale)
+            var age = DateTime.UtcNow - stream.LastUpdate;
+            if (age.TotalSeconds > 5)
+            {
+                return (false, $"Quote is stale (age: {age.TotalSeconds:F1}s)");
+            }
+
+            return (true, "Quote is valid");
+        }
+
+        /// <summary>
+        /// Gets a valid quote for execution, or null if unavailable
+        /// </summary>
+        public FIXMessage GetValidQuote(string quoteReqID, string lpName, string side)
+        {
+            var (isValid, reason) = ValidateQuoteForExecution(quoteReqID, lpName, side);
+
+            if (!isValid)
+            {
+                Console.WriteLine($"[GFI FIX] ⚠️  Cannot execute: {reason}");
+                return null;
+            }
+
+            string key = $"{quoteReqID}_{lpName}";
+            if (_quotes.TryGetValue(key, out var stream))
+            {
+                return side == "BUY" ? stream.OfferQuote : stream.BidQuote;
+            }
+
+            return null;
+        }
+
         private string GetQuoteStatusText(int status)
         {
             return status switch
