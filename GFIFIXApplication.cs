@@ -574,6 +574,7 @@ namespace FXOptionsSimulator.FIX
 
         /// <summary>
         /// Validates if a quote is still valid for execution
+        /// Per GFI FIX API spec: Uses ValidUntilTime (tag 62) to check quote expiration
         /// </summary>
         public (bool isValid, string reason) ValidateQuoteForExecution(string quoteReqID, string lpName, string side)
         {
@@ -592,11 +593,46 @@ namespace FXOptionsSimulator.FIX
                 return (false, $"Quote for {side} side has been canceled or not yet received");
             }
 
-            // Check quote freshness (quotes older than 5 seconds are stale)
-            var age = DateTime.UtcNow - stream.LastUpdate;
-            if (age.TotalSeconds > 5)
+            // Check ValidUntilTime (tag 62) per GFI spec
+            // Format: YYYYMMDD-HH:MM:SS (e.g., "20081006-13:00:00")
+            string validUntilTimeStr = quote.Get("62");
+
+            if (!string.IsNullOrEmpty(validUntilTimeStr))
             {
-                return (false, $"Quote is stale (age: {age.TotalSeconds:F1}s)");
+                if (DateTime.TryParseExact(validUntilTimeStr, "yyyyMMdd-HH:mm:ss",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                    out DateTime validUntilTime))
+                {
+                    DateTime nowUtc = DateTime.UtcNow;
+
+                    if (nowUtc > validUntilTime)
+                    {
+                        var expired = (nowUtc - validUntilTime).TotalSeconds;
+                        return (false, $"Quote expired {expired:F1}s ago (ValidUntilTime: {validUntilTimeStr})");
+                    }
+
+                    // Optional: Warn if quote is about to expire in next 2 seconds
+                    var timeRemaining = (validUntilTime - nowUtc).TotalSeconds;
+                    if (timeRemaining < 2)
+                    {
+                        Console.WriteLine($"[GFI FIX] ⚠️  Quote expires in {timeRemaining:F1}s");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"[GFI FIX] ⚠️  Could not parse ValidUntilTime: {validUntilTimeStr}");
+                }
+            }
+            else
+            {
+                // Fallback: If ValidUntilTime not present, use LastUpdate timestamp
+                // GFI spec says API applies default time if not provided
+                var age = DateTime.UtcNow - stream.LastUpdate;
+                if (age.TotalSeconds > 30)  // Default 30s timeout
+                {
+                    return (false, $"Quote is stale (age: {age.TotalSeconds:F1}s, no ValidUntilTime)");
+                }
             }
 
             return (true, "Quote is valid");
